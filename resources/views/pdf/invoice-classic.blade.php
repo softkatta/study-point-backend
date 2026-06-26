@@ -35,7 +35,6 @@
     $initials = strtoupper(substr($brand, 0, 2));
     $hsn = $invoiceSettings['hsn_sac_code'] ?? '999293';
 @endphp
-@include('pdf._invoice-context')
 <div class="page">
     <table width="100%" class="head-border"><tr>
         <td width="50%" valign="top">
@@ -46,7 +45,7 @@
         </td>
         <td width="50%" align="right" valign="top">
             <table align="right"><tr>
-                <td>@if(!empty($logoDataUri))<img src="{{ $logoDataUri }}" class="logo">@else<div class="logo-fallback">{{ $initials }}</div>@endif</td>
+                <td>@if(!empty($logoSrc))<img src="{!! $logoSrc !!}" class="logo" alt="">@else<div class="logo-fallback">{{ $initials }}</div>@endif</td>
                 <td style="padding-left:8px"><div class="brand">{{ $brand }}</div><div class="muted">{{ $company['legal_name'] }}</div></td>
             </tr></table>
         </td>

@@ -40,7 +40,7 @@ class SubscriptionDeleteTest extends TestCase
 
         parent::setUp();
 
-        $this->seed();
+        $this->seedApplication();
 
     }
 

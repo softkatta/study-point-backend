@@ -73,7 +73,7 @@ class PlanController extends Controller
     {
         $plan->delete();
 
-        return ApiResponse::success(null, 'Plan deleted');
+        return ApiResponse::success(null, 'Plan permanently deleted');
     }
 
     public function activate(Plan $plan): JsonResponse

@@ -36,7 +36,6 @@
     $brand = $company['trade_name'] ?: ($siteName ?? 'StudyPoint');
     $initials = strtoupper(substr($brand, 0, 2));
 @endphp
-@include('pdf._invoice-context')
 <div class="hero">
     <table width="100%"><tr>
         <td width="50%" valign="top">
@@ -48,7 +47,7 @@
         </td>
         <td width="50%" align="right" valign="top">
             <table align="right"><tr>
-                <td>@if(!empty($logoDataUri))<img src="{{ $logoDataUri }}" class="logo">@else<div class="logo-fallback">{{ $initials }}</div>@endif</td>
+                <td>@if(!empty($logoSrc))<img src="{!! $logoSrc !!}" class="logo" alt="">@else<div class="logo-fallback">{{ $initials }}</div>@endif</td>
                 <td style="padding-left:8px;text-align:left"><div class="brand">{{ $brand }}</div><div class="muted">{{ $company['email'] }}</div></td>
             </tr></table>
             <div class="muted" style="margin-top:6px;text-align:right">

@@ -72,7 +72,7 @@ class StudentRegistrationService
 
     private function nextStudentCode(): string
     {
-        $last = Student::withTrashed()->orderByDesc('id')->value('student_code');
+        $last = Student::orderByDesc('id')->value('student_code');
         $num = $last ? (int) preg_replace('/\D/', '', $last) + 1 : 2025001;
 
         return 'SP'.$num;

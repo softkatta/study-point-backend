@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'ip.whitelist' => \App\Http\Middleware\EnforceIpWhitelist::class,
+            'session.timeout' => \App\Http\Middleware\EnforceSessionTimeout::class,
             'audit.request' => \App\Http\Middleware\AuditRequestMiddleware::class,
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule): void {
         $schedule->command('audit:purge')->daily();
         $schedule->command('subscriptions:sync-status')->daily();
+        $schedule->command('whatsapp:send-reminders')->daily();
         $schedule->command('biometric:sync-logs')->everyFiveMinutes();
     })
     ->withExceptions(function (Exceptions $exceptions): void {

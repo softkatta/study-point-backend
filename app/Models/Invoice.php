@@ -4,12 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Invoice extends Model
 {
-    use SoftDeletes;
-
     protected $fillable = [
         'invoice_code', 'student_id', 'payment_id', 'document_type',
         'amount', 'gst_amount', 'total', 'status', 'issued_at',

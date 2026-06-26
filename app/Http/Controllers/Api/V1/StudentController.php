@@ -55,6 +55,8 @@ class StudentController extends Controller
 
     public function show(Student $student): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $student);
+
         $this->subscriptions->syncExpiryStatuses();
         $this->subscriptions->syncStudentMembership($student);
 
@@ -70,6 +72,8 @@ class StudentController extends Controller
 
     public function update(Request $request, Student $student): JsonResponse
     {
+        BranchScope::authorizeModel($request->user(), $student);
+
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'phone' => ['sometimes', 'string', 'max:20'],
@@ -80,6 +84,10 @@ class StudentController extends Controller
             'emergency_contact' => ['nullable', 'string'],
         ]);
 
+        if (BranchScope::branchId($request->user())) {
+            unset($data['branch_id']);
+        }
+
         $student->update($data);
 
         return ApiResponse::success(new StudentResource($student->fresh('branch')), 'Student updated');
@@ -87,6 +95,8 @@ class StudentController extends Controller
 
     public function destroy(Student $student): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $student);
+
         $student->delete();
 
         return ApiResponse::success(null, 'Student deleted');
@@ -95,13 +105,18 @@ class StudentController extends Controller
     public function bulkDelete(Request $request): JsonResponse
     {
         $request->validate(['ids' => ['required', 'array'], 'ids.*' => ['integer']]);
-        Student::whereIn('id', $request->ids)->delete();
+
+        $query = Student::whereIn('id', $request->ids);
+        BranchScope::apply($query, $request->user());
+        $query->delete();
 
         return ApiResponse::success(null, 'Students deleted');
     }
 
     public function activate(Student $student): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $student);
+
         $student->loadMissing('admission');
         if ($student->admission && $student->admission->payment_status !== 'paid') {
             return ApiResponse::error('Cannot activate student until admission payment is collected.', 422);
@@ -114,6 +129,8 @@ class StudentController extends Controller
 
     public function deactivate(Student $student): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $student);
+
         $student->update(['status' => StudentStatus::Pending]);
 
         return ApiResponse::success(new StudentResource($student->fresh()), 'Student marked inactive');
@@ -121,6 +138,8 @@ class StudentController extends Controller
 
     public function suspend(Student $student): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $student);
+
         $student->update(['status' => StudentStatus::Blacklisted]);
 
         return ApiResponse::success(new StudentResource($student->fresh()), 'Student blocked');
@@ -128,6 +147,8 @@ class StudentController extends Controller
 
     public function resendPortalCredentials(Student $student): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $student);
+
         $student->loadMissing('admission');
         if (! $student->hasReceivedPayment()) {
             return ApiResponse::error('Collect admission payment before sending portal credentials.', 422);
@@ -137,11 +158,25 @@ class StudentController extends Controller
             $result = $this->studentAccounts->resendPortalCredentials($student);
         } catch (\RuntimeException $e) {
             return ApiResponse::error($e->getMessage(), 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return ApiResponse::error(
+                'Could not send welcome email. Check Admin → Settings → Email (SMTP) and try again.',
+                422,
+            );
+        }
+
+        if (! $result['credentials_sent']) {
+            return ApiResponse::error(
+                'Could not send welcome email. Check Admin → Settings → Email (SMTP) and try again.',
+                422,
+            );
         }
 
         $email = $result['email'];
         $message = $result['credentials_sent']
-            ? "Portal login sent to {$email}" . ($student->phone ? ' (email + WhatsApp)' : ' (email)')
+            ? "Welcome email sent to {$email}. Ask the student to check Inbox and Spam/Promotions."
             : "Portal account updated but notification could not be sent. Check email settings.";
 
         return ApiResponse::success($result, $message);

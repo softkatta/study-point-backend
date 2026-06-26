@@ -26,7 +26,7 @@ class InvoiceService
         return $code;
     }
 
-    public function create(array $data): Invoice
+    public function create(array $data, bool $sendNotification = true): Invoice
     {
         $amount = (float) $data['amount'];
         $tax = $this->settings->calculateGst($amount);
@@ -44,16 +44,18 @@ class InvoiceService
         ]);
 
         $invoice->load('student');
-        try {
-            $this->notifications->invoiceGenerated($invoice);
-        } catch (\Throwable) {
-            // Invoice is saved; notification delivery is best-effort
+        if ($sendNotification) {
+            try {
+                $this->notifications->invoiceGenerated($invoice);
+            } catch (\Throwable) {
+                // Invoice is saved; notification delivery is best-effort
+            }
         }
 
         return $invoice;
     }
 
-    public function createForPayment(Payment $payment): Invoice
+    public function createForPayment(Payment $payment, bool $sendNotification = true): Invoice
     {
         $existing = Invoice::where('payment_id', $payment->id)
             ->where('document_type', 'payment')
@@ -70,7 +72,7 @@ class InvoiceService
             'document_type' => 'payment',
             'amount' => (float) $payment->amount,
             'status' => $payment->status === 'paid' ? 'paid' : 'pending',
-        ]);
+        ], $sendNotification);
     }
 
     public function createForRefund(Payment $payment): ?Invoice

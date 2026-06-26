@@ -24,7 +24,7 @@ class AdmissionCascadeDeleteTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
+        $this->seedApplication();
     }
 
     public function test_pending_admission_delete_removes_payment_and_documents(): void

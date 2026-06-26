@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\ProcessPaymentSideEffectsJob;
 use App\Models\Admission;
 use App\Models\Payment;
 use Illuminate\Support\Carbon;
@@ -15,6 +16,7 @@ class PaymentService
         private InvoiceService $invoices,
         private NotificationDispatchService $notifications,
         private PaymentGatewayService $gateway,
+        private StudentAccountService $studentAccounts,
     ) {}
 
     public function markPaid(Payment $payment, array $meta = []): Payment
@@ -60,34 +62,10 @@ class PaymentService
         });
 
         if ($payment->student_id) {
-            $this->deferPostPaymentSideEffects($payment->id);
+            ProcessPaymentSideEffectsJob::dispatch($payment->id);
         }
 
         return $payment;
-    }
-
-    private function deferPostPaymentSideEffects(int $paymentId): void
-    {
-        dispatch(function () use ($paymentId) {
-            $payment = Payment::with(['student.admission', 'admission'])->find($paymentId);
-            if (! $payment?->student_id) {
-                return;
-            }
-
-            try {
-                app(InvoiceService::class)->maybeAutoGenerate($payment);
-            } catch (\Throwable) {
-                // Payment is recorded; invoice generation is best-effort
-            }
-
-            try {
-                app(NotificationDispatchService::class)->paymentReceipt(
-                    $payment->fresh(['student.admission', 'admission'])
-                );
-            } catch (\Throwable) {
-                // Payment is recorded; notifications are best-effort
-            }
-        })->afterResponse();
     }
 
     public function activationMeta(Payment $payment): array
@@ -95,11 +73,12 @@ class PaymentService
         $payment->loadMissing(['student', 'admission.student']);
         $student = $payment->student ?? $payment->admission?->student;
         $email = $student?->email;
+        $credentialsSent = $this->studentAccounts->consumeLastCredentialsSent();
 
         return [
             'portal_ready' => (bool) $student?->user_id,
-            'credentials_sent' => (bool) ($email && $student?->user_id),
-            'credentials_email' => $email,
+            'credentials_sent' => $credentialsSent,
+            'credentials_email' => $credentialsSent ? $email : null,
         ];
     }
 

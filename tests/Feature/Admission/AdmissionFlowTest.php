@@ -19,7 +19,7 @@ class AdmissionFlowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
+        $this->seedApplication();
     }
 
     public function test_public_can_submit_admission(): void

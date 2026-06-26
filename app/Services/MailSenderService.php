@@ -25,7 +25,9 @@ class MailSenderService
         $provider = $config['provider'] ?? 'smtp';
 
         return match ($provider) {
-            'smtp' => ! empty($config['smtp_host']) && ! empty($config['smtp_username']),
+            'smtp' => ! empty($config['smtp_host'])
+                && ! empty($config['smtp_username'])
+                && ! empty($config['smtp_password']),
             'brevo' => ! empty($config['brevo_api_key']),
             'resend' => ! empty($config['resend_api_key']),
             'microsoft_graph' => ! empty($config['ms_tenant_id'])
@@ -65,6 +67,13 @@ class MailSenderService
             'gmail_api' => $this->sendViaGmailApi($config, $to, $subject, $body, $html, $attachments),
             default => throw new RuntimeException("Unsupported mail provider: {$provider}"),
         };
+
+        \Illuminate\Support\Facades\Log::info('StudyPoint email sent', [
+            'to' => $to,
+            'subject' => $subject,
+            'provider' => $provider,
+            'from' => $this->fromAddress($config)['email'],
+        ]);
     }
 
     public function sendTest(string $to): void
@@ -91,8 +100,16 @@ class MailSenderService
 
     private function fromAddress(array $config): array
     {
+        $username = trim((string) ($config['smtp_username'] ?? ''));
+        $fromEmail = trim((string) ($config['from_email'] ?: 'noreply@studypoint.in'));
+
+        // SMTP providers (Gmail, Hostinger, etc.) reject mail when From ≠ authenticated mailbox.
+        if (($config['provider'] ?? 'smtp') === 'smtp' && filter_var($username, FILTER_VALIDATE_EMAIL)) {
+            $fromEmail = $username;
+        }
+
         return [
-            'email' => $config['from_email'] ?: 'noreply@studypoint.in',
+            'email' => $fromEmail,
             'name' => $config['from_name'] ?: 'StudyPoint',
         ];
     }
@@ -101,6 +118,10 @@ class MailSenderService
     {
         if (empty($config['smtp_host'])) {
             throw new RuntimeException('SMTP host is required.');
+        }
+
+        if (empty($config['smtp_username']) || empty($config['smtp_password'])) {
+            throw new RuntimeException('SMTP username and app password are required in Admin → Settings → Email.');
         }
 
         $encryption = ($config['smtp_encryption'] ?? 'tls') === 'none' ? null : ($config['smtp_encryption'] ?? 'tls');

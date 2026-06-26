@@ -17,6 +17,7 @@ use App\Services\AdmissionService;
 use App\Services\NotificationChannelService;
 use App\Services\PaymentGatewayService;
 use App\Services\PaymentService;
+use App\Support\AdmissionPaymentLink;
 use App\Support\ApiResponse;
 use App\Support\BranchScope;
 use Illuminate\Http\JsonResponse;
@@ -64,8 +65,8 @@ class AdmissionController extends Controller
         $user = $request->user();
         $data = $request->validated();
 
-        if ($user?->hasRole('branch_manager') && $user->branch_id) {
-            $data['branch_id'] = $user->branch_id;
+        if ($user && ($branchId = BranchScope::branchId($user))) {
+            $data['branch_id'] = $branchId;
             $source = AdmissionSource::Branch;
         } elseif ($user && $request->input('source') === 'admin') {
             $source = AdmissionSource::Admin;
@@ -103,11 +104,14 @@ class AdmissionController extends Controller
 
     public function show(Admission $admission): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $admission);
+
         return ApiResponse::success(new AdmissionResource($admission->load(['branch', 'plan', 'documents'])));
     }
 
     public function update(Request $request, Admission $admission): JsonResponse
     {
+        BranchScope::authorizeModel($request->user(), $admission);
         if ($request->hasAny(['follow_up_date', 'follow_up_note']) && ! $request->filled('first_name')) {
             $data = $request->validate([
                 'follow_up_date' => ['nullable', 'date'],
@@ -131,6 +135,8 @@ class AdmissionController extends Controller
 
     public function destroy(Admission $admission): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $admission);
+
         $summary = $this->admissionService->deleteCascade($admission);
 
         return ApiResponse::success($summary, 'Admission and related records permanently deleted');
@@ -138,6 +144,8 @@ class AdmissionController extends Controller
 
     public function verify(Admission $admission): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $admission);
+
         try {
             $updated = $this->admissionService->verify($admission);
         } catch (\RuntimeException $e) {
@@ -149,6 +157,8 @@ class AdmissionController extends Controller
 
     public function approve(Admission $admission): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $admission);
+
         try {
             $result = $this->admissionService->approve($admission);
         } catch (\RuntimeException $e) {
@@ -165,6 +175,8 @@ class AdmissionController extends Controller
 
     public function reject(Request $request, Admission $admission): JsonResponse
     {
+        BranchScope::authorizeModel($request->user(), $admission);
+
         $request->validate(['reason' => ['nullable', 'string', 'max:500']]);
         $updated = $this->admissionService->reject($admission, $request->reason);
 
@@ -173,6 +185,8 @@ class AdmissionController extends Controller
 
     public function uploadDocuments(Request $request, Admission $admission): JsonResponse
     {
+        BranchScope::authorizeModel($request->user(), $admission);
+
         if ($admission->status !== AdmissionStatus::Pending) {
             return ApiResponse::error('Documents can only be uploaded for pending admissions.', 422);
         }
@@ -219,7 +233,7 @@ class AdmissionController extends Controller
         $admission = $payment->admission?->fresh(['student', 'subscription', 'branch', 'plan']);
         $meta = $this->paymentService->activationMeta($payment);
         $message = $meta['credentials_sent'] && $meta['credentials_email']
-            ? 'Payment collected — membership activated. Portal login sent to '.$meta['credentials_email'].'.'
+            ? 'Payment collected — membership activated. Payment receipt and portal login details sent to '.$meta['credentials_email'].'.'
             : 'Payment collected — membership activated automatically';
 
         return ApiResponse::success([
@@ -231,6 +245,48 @@ class AdmissionController extends Controller
             'portal_ready' => (bool) $meta['portal_ready'],
             ...$meta,
         ], $message);
+    }
+
+    public function resumePayment(Request $request, Admission $admission): JsonResponse
+    {
+        $data = $request->validate([
+            'expires' => ['required', 'integer'],
+            'signature' => ['required', 'string', 'max:128'],
+        ]);
+
+        if (! AdmissionPaymentLink::verify($admission->id, (int) $data['expires'], $data['signature'])) {
+            return ApiResponse::error('This payment link is invalid or has expired.', 403);
+        }
+
+        $admission->loadMissing(['branch', 'plan']);
+        $payAtBranch = $admission->payment_mode === 'branch';
+
+        if ($admission->payment_status === 'paid') {
+            return ApiResponse::success([
+                'admission_id' => $admission->id,
+                'admission_code' => $admission->admission_code,
+                'name' => $admission->name,
+                'payment_status' => 'paid',
+                'pay_at_branch' => $payAtBranch,
+                'can_pay_online' => false,
+            ], 'Payment already completed');
+        }
+
+        return ApiResponse::success([
+            'admission_id' => $admission->id,
+            'admission_code' => $admission->admission_code,
+            'name' => $admission->name,
+            'email' => $admission->email,
+            'phone' => $admission->phone,
+            'amount' => (float) $admission->amount,
+            'plan_name' => $admission->plan_name,
+            'payment_mode' => $admission->payment_mode,
+            'payment_status' => $admission->payment_status,
+            'pay_at_branch' => $payAtBranch,
+            'can_pay_online' => ! $payAtBranch && $this->gateway->isOnlineMethod((string) $admission->payment_mode),
+            'branch_name' => $admission->branch?->name,
+            'branch_city' => $admission->branch?->city,
+        ]);
     }
 
     public function checkout(Admission $admission): JsonResponse

@@ -7,6 +7,7 @@ use App\Http\Resources\BranchResource;
 use App\Models\Branch;
 use App\Models\Student;
 use App\Support\ApiResponse;
+use App\Support\BranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -16,6 +17,10 @@ class BranchController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Branch::withCount('students')->with('managers')->orderByDesc('is_head_office')->orderBy('name');
+
+        if ($branchId = BranchScope::branchId($request->user())) {
+            $query->where('id', $branchId);
+        }
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -56,11 +61,15 @@ class BranchController extends Controller
 
     public function show(Branch $branch): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $branch);
+
         return ApiResponse::success(new BranchResource($branch->loadCount('students')->load('managers')));
     }
 
     public function update(Request $request, Branch $branch): JsonResponse
     {
+        BranchScope::authorizeModel($request->user(), $branch);
+
         $data = $request->validate([
             'code' => ['sometimes', 'string', 'max:20', Rule::unique('branches', 'code')->ignore($branch->id)],
             'name' => ['sometimes', 'string', 'max:100'],
@@ -84,6 +93,8 @@ class BranchController extends Controller
 
     public function destroy(Branch $branch): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $branch);
+
         if ($branch->is_head_office) {
             return ApiResponse::error('Head office branch cannot be deleted. Edit it under Head Office or Branches.', 422);
         }
@@ -95,6 +106,8 @@ class BranchController extends Controller
 
     public function activate(Branch $branch): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $branch);
+
         $branch->update(['status' => 'active']);
 
         return ApiResponse::success(new BranchResource($branch->fresh()->loadCount('students')), 'Branch activated');
@@ -102,6 +115,8 @@ class BranchController extends Controller
 
     public function deactivate(Branch $branch): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $branch);
+
         $branch->update(['status' => 'inactive']);
 
         return ApiResponse::success(new BranchResource($branch->fresh()->loadCount('students')), 'Branch deactivated');
@@ -109,6 +124,8 @@ class BranchController extends Controller
 
     public function transferStudents(Request $request, Branch $branch): JsonResponse
     {
+        BranchScope::authorizeModel($request->user(), $branch);
+
         $data = $request->validate([
             'target_branch_id' => ['required', 'exists:branches,id'],
         ]);

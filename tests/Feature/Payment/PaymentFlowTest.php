@@ -18,7 +18,7 @@ class PaymentFlowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
+        $this->seedApplication();
     }
 
     public function test_admin_can_collect_cash_for_admission(): void

@@ -4,12 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Branch extends Model
 {
-    use SoftDeletes;
-
     protected $fillable = [
         'code', 'name', 'legal_name', 'registration_number', 'city', 'state', 'pincode',
         'manager_name', 'manager_phone', 'email', 'website',

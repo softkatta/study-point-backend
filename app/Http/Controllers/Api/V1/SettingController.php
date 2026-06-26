@@ -13,6 +13,7 @@ use App\Support\MailDefaults;
 use App\Support\GstDefaults;
 use App\Services\HeadOfficeService;
 use App\Support\InvoiceDefaults;
+use App\Support\PaymentDefaults;
 use App\Support\SecurityDefaults;
 use App\Support\WhatsAppDefaults;
 use App\Support\GeneralDefaults;
@@ -22,6 +23,7 @@ use App\Support\MediaUrl;
 use App\Services\AppSettingsService;
 use App\Services\AuditService;
 use App\Services\BiometricService;
+use App\Services\BrandingPdfCacheService;
 use App\Services\MailSenderService;
 use App\Services\PaymentGatewayService;
 use App\Services\SecurityPolicyService;
@@ -145,6 +147,9 @@ class SettingController extends Controller
                 'id_card_back_image_url' => ['nullable', 'string', 'max:500'],
                 'site_name' => ['nullable', 'string', 'max:100'],
                 'site_tagline' => ['nullable', 'string', 'max:150'],
+                'footer_copyright_text' => ['nullable', 'string', 'max:250'],
+                'footer_developed_by_text' => ['nullable', 'string', 'max:120'],
+                'footer_developed_by_url' => ['nullable', 'string', 'max:300'],
                 'announcement_bar_visible' => ['nullable', 'boolean'],
                 'meta' => ['nullable', 'array'],
                 'meta.default_title' => ['nullable', 'string', 'max:120'],
@@ -157,6 +162,12 @@ class SettingController extends Controller
                 'meta.pages' => ['nullable', 'array'],
                 'meta.pages.*.title' => ['nullable', 'string', 'max:120'],
                 'meta.pages.*.description' => ['nullable', 'string', 'max:300'],
+                'policies' => ['nullable', 'array'],
+                'policies.*.effective_date' => ['nullable', 'string', 'max:80'],
+                'policies.*.sections' => ['nullable', 'array'],
+                'policies.*.sections.*.title' => ['required_with:policies.*.sections', 'string', 'max:150'],
+                'policies.*.sections.*.body' => ['required_with:policies.*.sections', 'array', 'min:1'],
+                'policies.*.sections.*.body.*' => ['string', 'max:1000'],
             ]);
 
             Setting::saveSection('appearance', $data);
@@ -204,14 +215,12 @@ class SettingController extends Controller
                 return $denied;
             }
 
+            $request->merge(WhatsAppDefaults::normalizePayload($request->only(array_keys(WhatsAppDefaults::all()))));
+
             $data = $request->validate(WhatsAppDefaults::validationRules());
             $existing = Setting::getSection('whatsapp');
 
-            foreach (['interakt_api_key', 'meta_access_token', 'gupshup_api_key', 'wati_access_token', 'twilio_auth_token', 'aisensy_api_key'] as $secret) {
-                if (array_key_exists($secret, $data) && ($data[$secret] === '' || str_contains((string) $data[$secret], '••••'))) {
-                    $data[$secret] = $existing[$secret] ?? '';
-                }
-            }
+            $data = $this->mergeWhatsAppSecrets($data, $existing);
 
             $payload = $data;
             if (array_key_exists('templates', $existing)) {
@@ -523,21 +532,61 @@ class SettingController extends Controller
             return $denied;
         }
 
-        $request->validate(['test_phone' => ['required', 'string', 'max:20']]);
+        $request->merge(WhatsAppDefaults::normalizePayload($request->only(array_keys(WhatsAppDefaults::all()))));
+
+        $waRules = [];
+        foreach (WhatsAppDefaults::validationRules() as $key => $rules) {
+            $waRules[$key] = array_merge(
+                ['sometimes'],
+                array_values(array_filter($rules, fn ($rule) => $rule !== 'required'))
+            );
+        }
+
+        $request->validate(array_merge(
+            ['test_phone' => ['required', 'string', 'max:20']],
+            $waRules
+        ));
+
+        $configOverrides = $this->whatsappConfigFromRequest($request);
 
         try {
-            $whatsapp->sendTest($request->input('test_phone'));
+            $whatsapp->sendTest($request->input('test_phone'), $configOverrides);
+            $config = $whatsapp->config($configOverrides);
 
             return ApiResponse::success([
                 'ok' => true,
-                'provider' => $whatsapp->config()['provider'] ?? 'interakt',
+                'provider' => $config['provider'] ?? 'interakt',
             ], 'Test WhatsApp message sent successfully');
         } catch (\Throwable $e) {
             return ApiResponse::error('WhatsApp test failed: '.$e->getMessage(), 422);
         }
     }
 
-    public function uploadLogo(Request $request): JsonResponse
+    /** @return array<string, mixed> */
+    private function whatsappConfigFromRequest(Request $request): array
+    {
+        $existing = Setting::getSection('whatsapp');
+        $data = $request->only(array_keys(WhatsAppDefaults::all()));
+
+        return $this->mergeWhatsAppSecrets($data, $existing);
+    }
+
+    /** @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $existing
+     * @return array<string, mixed>
+     */
+    private function mergeWhatsAppSecrets(array $data, array $existing): array
+    {
+        foreach (['interakt_api_key', 'meta_access_token', 'gupshup_api_key', 'wati_access_token', 'twilio_auth_token', 'aisensy_api_key'] as $secret) {
+            if (array_key_exists($secret, $data) && ($data[$secret] === '' || str_contains((string) $data[$secret], '••••'))) {
+                $data[$secret] = $existing[$secret] ?? '';
+            }
+        }
+
+        return $data;
+    }
+
+    public function uploadLogo(Request $request, BrandingPdfCacheService $brandingPdf): JsonResponse
     {
         if ($denied = $this->requireSuperAdmin($request)) {
             return $denied;
@@ -548,6 +597,7 @@ class SettingController extends Controller
         $url = MediaUrl::absolute(Storage::disk('public')->url($path));
 
         Setting::saveSection('appearance', ['logo_url' => $url]);
+        $brandingPdf->warmLogoCache($url);
 
         return ApiResponse::success(['url' => $url], 'Logo uploaded');
     }

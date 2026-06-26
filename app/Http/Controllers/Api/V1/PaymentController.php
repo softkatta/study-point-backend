@@ -36,12 +36,7 @@ class PaymentController extends Controller
 
         $query = Payment::with(['student', 'admission'])->latest();
 
-        if ($branchId = BranchScope::branchId($request->user())) {
-            $query->where(function ($q) use ($branchId) {
-                $q->whereHas('student', fn ($sq) => $sq->where('branch_id', $branchId))
-                    ->orWhereHas('admission', fn ($aq) => $aq->where('branch_id', $branchId));
-            });
-        }
+        BranchScope::applyToPayments($query, $request->user());
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -155,11 +150,15 @@ class PaymentController extends Controller
 
     public function show(Payment $payment): JsonResponse
     {
+        BranchScope::authorizePayment(request()->user(), $payment);
+
         return ApiResponse::success(new PaymentResource($payment->load(['student', 'admission'])));
     }
 
     public function verify(Payment $payment): JsonResponse
     {
+        BranchScope::authorizePayment(request()->user(), $payment);
+
         if ($payment->status === 'paid') {
             return ApiResponse::success(new PaymentResource($payment->load(['student', 'admission'])), 'Payment already verified');
         }
@@ -175,6 +174,8 @@ class PaymentController extends Controller
 
     public function confirm(Request $request, Payment $payment): JsonResponse
     {
+        BranchScope::authorizePayment($request->user(), $payment);
+
         if ($payment->status === 'paid') {
             return ApiResponse::success(new PaymentResource($payment->load(['student', 'admission'])), 'Payment already confirmed');
         }
@@ -261,6 +262,8 @@ class PaymentController extends Controller
 
     public function refund(Payment $payment): JsonResponse
     {
+        BranchScope::authorizePayment(request()->user(), $payment);
+
         try {
             if ($payment->refund_status === 'pending') {
                 $payment = $this->payments->markRefundReceived($payment);
@@ -290,6 +293,8 @@ class PaymentController extends Controller
 
     public function destroy(Payment $payment): JsonResponse
     {
+        BranchScope::authorizePayment(request()->user(), $payment);
+
         $payment->delete();
 
         return ApiResponse::success(null, 'Payment deleted');
@@ -323,8 +328,7 @@ class PaymentController extends Controller
     private function nextCode(): string
     {
         $year = date('Y');
-        $last = Payment::withTrashed()
-            ->where('payment_code', 'like', "PAY-{$year}-%")
+        $last = Payment::where('payment_code', 'like', "PAY-{$year}-%")
             ->orderByDesc('id')
             ->value('payment_code');
 

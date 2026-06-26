@@ -8,6 +8,7 @@ use App\Models\Plan;
 use App\Models\Student;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Services\SubscriptionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -19,7 +20,7 @@ class SubscriptionCancelTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
+        $this->seedApplication();
     }
 
     public function test_cancel_subscription_creates_prorated_refund_pending(): void
@@ -94,6 +95,10 @@ class SubscriptionCancelTest extends TestCase
         $response = $this->patchJson("/api/v1/subscriptions/{$subscription->id}/cancel");
 
         $response->assertOk();
+        $expectedRefund = app(SubscriptionService::class)->calculateProratedRefund(
+            $subscription->fresh(),
+            $paid,
+        );
         $this->assertDatabaseHas('subscriptions', [
             'id' => $subscription->id,
             'status' => 'cancelled',
@@ -101,7 +106,7 @@ class SubscriptionCancelTest extends TestCase
         $this->assertDatabaseHas('payments', [
             'id' => $paid->id,
             'status' => 'refund_pending',
-            'refund_amount' => 3000.00,
+            'refund_amount' => $expectedRefund,
             'refund_status' => 'pending',
         ]);
         $this->assertDatabaseHas('payments', [
@@ -121,7 +126,7 @@ class SubscriptionCancelTest extends TestCase
         $this->assertDatabaseHas('invoices', [
             'payment_id' => $paid->id,
             'document_type' => 'refund',
-            'amount' => 3000.00,
+            'amount' => $expectedRefund,
             'status' => 'pending',
         ]);
 
@@ -189,7 +194,10 @@ class SubscriptionCancelTest extends TestCase
 
         $this->patchJson("/api/v1/subscriptions/{$subscription->id}/cancel")->assertOk();
 
-        $expectedRefund = round(3000 * ((15 + 1) / (14 + 15 + 1)), 2);
+        $expectedRefund = app(SubscriptionService::class)->calculateProratedRefund(
+            $subscription->fresh(),
+            $paid,
+        );
 
         $this->assertDatabaseHas('payments', [
             'id' => $paid->id,

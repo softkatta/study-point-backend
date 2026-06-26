@@ -7,12 +7,9 @@ use App\Enums\AdmissionStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Admission extends Model
 {
-    use SoftDeletes;
-
     protected $fillable = [
         'admission_code', 'source', 'status', 'first_name', 'last_name', 'name',
         'email', 'phone', 'date_of_birth', 'gender', 'address', 'city', 'state', 'pincode',

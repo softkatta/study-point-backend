@@ -16,7 +16,7 @@ class ExpenseFlowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
+        $this->seedApplication();
     }
 
     public function test_admin_can_create_and_approve_expense(): void

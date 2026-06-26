@@ -12,35 +12,38 @@ class FaqSeeder extends Seeder
         $faqs = [
             [
                 'question' => 'What are the operating hours?',
-                'answer' => 'Most branches operate from 6 AM to 11 PM. Annual members get 24×7 access with biometric entry.',
+                'answer' => 'Most StudyPoint branches are open from 6:00 AM to 11:00 PM, seven days a week. Check the Branches page for branch-specific timings.',
                 'sort_order' => 1,
             ],
             [
-                'question' => 'Can I bring food inside?',
-                'answer' => 'Light snacks are allowed in the cafeteria area. Meals are not permitted inside the study halls to maintain hygiene.',
+                'question' => 'Can I switch between branches?',
+                'answer' => 'Your primary branch is assigned at admission. Short-term branch transfers may be arranged through the branch manager for eligible plans.',
                 'sort_order' => 2,
             ],
             [
-                'question' => 'Is there a trial period?',
-                'answer' => 'Yes! You can get a Daily Pass to experience our facilities before committing to a longer plan.',
+                'question' => 'Is WiFi included in all plans?',
+                'answer' => 'Yes. High-speed WiFi is included with every membership plan at no extra charge.',
                 'sort_order' => 3,
             ],
             [
-                'question' => 'How does biometric access work?',
-                'answer' => 'After enrollment, your fingerprint or face is registered. Simply scan at the entry gate — the system validates your membership automatically.',
+                'question' => 'How do I renew my membership?',
+                'answer' => 'You can renew from the student portal before expiry, or visit your branch counter. Online payment and UPI are supported.',
                 'sort_order' => 4,
             ],
             [
-                'question' => 'Can I switch branches?',
-                'answer' => 'Multi-branch access is available with Quarterly, Half-Yearly, and Annual plans. Single-branch plans are limited to one branch.',
+                'question' => 'What documents are needed for admission?',
+                'answer' => 'A valid photo ID (Aadhaar, college ID or driving licence) and a recent passport-size photograph are required for new admissions.',
                 'sort_order' => 5,
             ],
         ];
 
-        foreach ($faqs as $faq) {
+        foreach ($faqs as $data) {
             Faq::updateOrCreate(
-                ['question' => $faq['question']],
-                $faq + ['status' => 'active'],
+                ['question' => $data['question']],
+                [
+                    ...$data,
+                    'status' => 'active',
+                ],
             );
         }
     }

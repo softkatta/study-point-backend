@@ -53,6 +53,12 @@ class SubscriptionController extends Controller
 
         $data['end_date'] = $data['start_date'];
 
+        if ($branchId = BranchScope::branchId($request->user())) {
+            $data['branch_id'] = $branchId;
+            $student = \App\Models\Student::findOrFail($data['student_id']);
+            BranchScope::authorizeModel($request->user(), $student);
+        }
+
         $subscription = $this->subscriptions->createManual($data);
 
         return ApiResponse::success(
@@ -64,11 +70,15 @@ class SubscriptionController extends Controller
 
     public function show(Subscription $subscription): JsonResponse
     {
+        $this->assertSubscriptionAccess($subscription);
+
         return ApiResponse::success(new SubscriptionResource($subscription->load('student')));
     }
 
     public function activate(Subscription $subscription): JsonResponse
     {
+        $this->assertSubscriptionAccess($subscription);
+
         if ($subscription->status === SubscriptionStatus::Pending) {
             return ApiResponse::error(
                 'Collect payment first. Membership dates extend automatically after payment is received.',
@@ -87,6 +97,8 @@ class SubscriptionController extends Controller
 
     public function pause(Subscription $subscription): JsonResponse
     {
+        $this->assertSubscriptionAccess($subscription);
+
         $subscription->update(['status' => SubscriptionStatus::Paused]);
 
         if ($subscription->student) {
@@ -98,6 +110,8 @@ class SubscriptionController extends Controller
 
     public function resume(Subscription $subscription): JsonResponse
     {
+        $this->assertSubscriptionAccess($subscription);
+
         $subscription->update(['status' => SubscriptionStatus::Active]);
 
         if ($subscription->student) {
@@ -109,6 +123,8 @@ class SubscriptionController extends Controller
 
     public function cancel(Subscription $subscription): JsonResponse
     {
+        $this->assertSubscriptionAccess($subscription);
+
         $result = $this->subscriptions->cancelSubscription($subscription);
 
         $parts = ['Subscription cancelled'];
@@ -129,6 +145,8 @@ class SubscriptionController extends Controller
 
     public function renew(Subscription $subscription): JsonResponse
     {
+        $this->assertSubscriptionAccess($subscription);
+
         $result = $this->subscriptions->requestRenewal($subscription);
 
         return ApiResponse::success([
@@ -139,6 +157,8 @@ class SubscriptionController extends Controller
 
     public function extend(Request $request, Subscription $subscription): JsonResponse
     {
+        $this->assertSubscriptionAccess($subscription);
+
         $days = $request->integer('days', 30);
         $end = ($subscription->end_date ?? now())->copy()->addDays($days);
 
@@ -167,6 +187,8 @@ class SubscriptionController extends Controller
 
     private function changePlan(Request $request, Subscription $subscription, string $action): JsonResponse
     {
+        $this->assertSubscriptionAccess($subscription);
+
         $data = $request->validate([
             'plan_id' => ['required', 'exists:plans,id'],
             'plan' => ['nullable', 'string'],
@@ -192,6 +214,8 @@ class SubscriptionController extends Controller
 
     public function destroy(Subscription $subscription): JsonResponse
     {
+        $this->assertSubscriptionAccess($subscription);
+
         if (! $this->subscriptions->canDeleteSubscription($subscription)) {
             return ApiResponse::error(
                 'Cannot delete a subscription after payment has been collected. Cancel the subscription instead.',
@@ -206,5 +230,10 @@ class SubscriptionController extends Controller
         }
 
         return ApiResponse::success(null, 'Subscription deleted');
+    }
+
+    private function assertSubscriptionAccess(Subscription $subscription): void
+    {
+        BranchScope::authorizeModel(request()->user(), $subscription);
     }
 }

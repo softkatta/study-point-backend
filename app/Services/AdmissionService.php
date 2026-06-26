@@ -69,11 +69,12 @@ class AdmissionService
         $this->syncPaymentRecord($admission);
 
         $admission = $admission->fresh();
-        if ($source === AdmissionSource::Online) {
+
+        if ($source === AdmissionSource::Online && $admission->payment_status !== 'paid') {
             try {
-                $this->notifications->admissionSubmitted($admission);
+                $this->notifications->admissionReceivedWelcome($admission);
             } catch (\Throwable) {
-                // Admission is saved; notifications are best-effort
+                // Registration still succeeds if welcome email fails.
             }
         }
 
@@ -178,7 +179,7 @@ class AdmissionService
             ]);
 
             $subscription = $this->subscriptions->createFromAdmission($admission, $student);
-            $this->studentAccounts->ensureForStudent($student->fresh());
+            $provision = $this->studentAccounts->provisionForStudent($student->fresh());
 
             $admission->update([
                 'status' => AdmissionStatus::Active,
@@ -195,8 +196,18 @@ class AdmissionService
                 'student' => $student,
                 'subscription' => $subscription->fresh(),
                 'admission' => $admission->fresh(['branch', 'plan', 'documents', 'student']),
+                'portal_password' => $provision['password'],
             ];
         });
+
+        if (! empty($result['portal_password'])) {
+            $this->studentAccounts->deliverPortalCredentials(
+                $result['student'],
+                $result['portal_password'],
+            );
+        }
+
+        unset($result['portal_password']);
 
         app(BiometricAccessService::class)->syncStudentAccess($result['student']);
 
@@ -261,7 +272,7 @@ class AdmissionService
                 ],
             ];
 
-            $paymentQuery = Payment::withTrashed()->where(function ($query) use ($admission, $student) {
+            $paymentQuery = Payment::where(function ($query) use ($admission, $student) {
                 $query->where('admission_id', $admission->id);
                 if ($student) {
                     $query->orWhere('student_id', $student->id);
@@ -271,18 +282,15 @@ class AdmissionService
             $paymentIds = (clone $paymentQuery)->pluck('id');
 
             if ($paymentIds->isNotEmpty()) {
-                $summary['deleted']['invoices'] += Invoice::withTrashed()
-                    ->whereIn('payment_id', $paymentIds)
-                    ->forceDelete();
+                $summary['deleted']['invoices'] += Invoice::whereIn('payment_id', $paymentIds)
+                    ->delete();
             }
 
             if ($student) {
-                $summary['deleted']['invoices'] += Invoice::withTrashed()
-                    ->where('student_id', $student->id)
-                    ->forceDelete();
+                $summary['deleted']['invoices'] += Invoice::where('student_id', $student->id)
+                    ->delete();
 
-                $subscriptionIds = Subscription::withTrashed()
-                    ->where('student_id', $student->id)
+                $subscriptionIds = Subscription::where('student_id', $student->id)
                     ->pluck('id');
                 if ($admission->subscription_id) {
                     $subscriptionIds = $subscriptionIds
@@ -292,7 +300,7 @@ class AdmissionService
                 }
 
                 foreach ($subscriptionIds as $subscriptionId) {
-                    if (Subscription::withTrashed()->where('id', $subscriptionId)->forceDelete()) {
+                    if (Subscription::where('id', $subscriptionId)->delete()) {
                         $summary['deleted']['subscriptions']++;
                     }
                 }
@@ -304,12 +312,12 @@ class AdmissionService
                     Storage::disk('public')->delete($student->photo_path);
                 }
 
-                $student->forceDelete();
+                $student->delete();
                 $summary['deleted']['student'] = true;
             }
 
-            $summary['deleted']['payments'] = $paymentQuery->forceDelete();
-            $admission->forceDelete();
+            $summary['deleted']['payments'] = $paymentQuery->delete();
+            $admission->delete();
 
             return $summary;
         });
@@ -343,10 +351,10 @@ class AdmissionService
     private function resolveStudentForAdmission(Admission $admission): ?Student
     {
         if ($admission->student_id) {
-            return Student::withTrashed()->with('user')->find($admission->student_id);
+            return Student::with('user')->find($admission->student_id);
         }
 
-        return Student::withTrashed()->with('user')->where('admission_id', $admission->id)->first();
+        return Student::with('user')->where('admission_id', $admission->id)->first();
     }
 
     private function resolvePaymentStatus(array $data, AdmissionSource $source): string
@@ -388,7 +396,7 @@ class AdmissionService
 
     private function nextCode(): string
     {
-        $last = Admission::withTrashed()->orderByDesc('id')->value('admission_code');
+        $last = Admission::orderByDesc('id')->value('admission_code');
         $num = $last ? (int) preg_replace('/\D/', '', $last) + 1 : 1;
 
         return 'ADM' . str_pad((string) $num, 3, '0', STR_PAD_LEFT);
@@ -396,7 +404,7 @@ class AdmissionService
 
     private function nextStudentCode(): string
     {
-        $last = Student::withTrashed()->orderByDesc('id')->value('student_code');
+        $last = Student::orderByDesc('id')->value('student_code');
         $num = $last ? (int) preg_replace('/\D/', '', $last) + 1 : 2024248;
 
         return 'SP' . $num;
@@ -405,8 +413,7 @@ class AdmissionService
     private function nextPaymentCode(): string
     {
         $year = date('Y');
-        $last = Payment::withTrashed()
-            ->where('payment_code', 'like', "PAY-{$year}-%")
+        $last = Payment::where('payment_code', 'like', "PAY-{$year}-%")
             ->orderByDesc('id')
             ->value('payment_code');
         $num = $last ? (int) substr($last, -3) + 1 : 1;

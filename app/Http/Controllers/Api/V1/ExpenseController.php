@@ -68,6 +68,8 @@ class ExpenseController extends Controller
 
     public function show(Expense $expense): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $expense);
+
         return ApiResponse::success(new ExpenseResource($expense->load('branch')));
     }
 
@@ -113,6 +115,8 @@ class ExpenseController extends Controller
 
     public function approve(Expense $expense): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $expense);
+
         $expense->update(['status' => 'approved']);
 
         return ApiResponse::success(new ExpenseResource($expense->fresh('branch')), 'Expense approved');
@@ -120,6 +124,8 @@ class ExpenseController extends Controller
 
     public function reject(Expense $expense): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $expense);
+
         $expense->update(['status' => 'rejected']);
 
         return ApiResponse::success(new ExpenseResource($expense->fresh('branch')), 'Expense rejected');
@@ -127,6 +133,8 @@ class ExpenseController extends Controller
 
     public function uploadBill(Request $request, Expense $expense): JsonResponse
     {
+        BranchScope::authorizeModel($request->user(), $expense);
+
         $request->validate([
             'bill' => ['required', 'file', 'max:5120', 'mimes:pdf,jpg,jpeg,png'],
         ]);
@@ -143,6 +151,8 @@ class ExpenseController extends Controller
 
     public function downloadBill(Expense $expense): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $expense);
+
         if (! $expense->bill_path || ! Storage::disk('public')->exists($expense->bill_path)) {
             return ApiResponse::error('Bill not found.', 404);
         }

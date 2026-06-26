@@ -6,12 +6,9 @@ use App\Enums\SubscriptionStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Subscription extends Model
 {
-    use SoftDeletes;
-
     protected $fillable = [
         'subscription_code', 'student_id', 'plan_id', 'branch_id',
         'plan_name', 'plan_category', 'start_date', 'end_date',

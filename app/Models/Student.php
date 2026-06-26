@@ -7,12 +7,9 @@ use App\Services\SmartOfficeService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Student extends Model
 {
-    use SoftDeletes;
-
     protected $fillable = [
         'student_code', 'verify_token', 'qr_token', 'user_id', 'name', 'email', 'phone',
         'branch_id', 'plan_id', 'city', 'blood_group', 'emergency_contact', 'photo_path',

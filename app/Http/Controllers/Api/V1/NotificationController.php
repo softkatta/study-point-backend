@@ -42,26 +42,21 @@ class NotificationController extends Controller
             }
 
             if ($channel === 'whatsapp') {
-                $invoice->loadMissing('student');
-                $phone = $invoice->student?->phone;
-                if (! $phone) {
-                    return ApiResponse::error('Student phone not found.', 422);
-                }
-
                 try {
-                    $whatsapp->send(
-                        $phone,
-                        "StudyPoint: Invoice {$invoice->invoice_code}. Total: ₹{$invoice->total}.",
+                    $message = app(\App\Services\WhatsAppDispatchService::class)->queueInvoice(
+                        $invoice,
+                        app(\App\Services\InvoicePdfService::class),
                     );
 
                     return ApiResponse::success([
                         'channel' => $channel,
                         'resource' => $resource,
                         'id' => $id,
-                        'sent' => true,
-                    ], 'Invoice WhatsApp sent');
+                        'queued' => true,
+                        'message_id' => $message?->id,
+                    ], 'Invoice WhatsApp queued');
                 } catch (\Throwable $e) {
-                    return ApiResponse::error('Failed to send WhatsApp: '.$e->getMessage(), 422);
+                    return ApiResponse::error('Failed to queue WhatsApp: '.$e->getMessage(), 422);
                 }
             }
         }
@@ -90,10 +85,10 @@ class NotificationController extends Controller
                         'channel' => $channel,
                         'resource' => $resource,
                         'id' => $id,
-                        'sent' => true,
-                    ], 'Payment receipt WhatsApp sent');
+                        'queued' => true,
+                    ], 'Payment receipt WhatsApp queued');
                 } catch (\Throwable $e) {
-                    return ApiResponse::error('Failed to send WhatsApp: '.$e->getMessage(), 422);
+                    return ApiResponse::error('Failed to queue WhatsApp: '.$e->getMessage(), 422);
                 }
             }
         }

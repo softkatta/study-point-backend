@@ -27,9 +27,14 @@ use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\PermissionController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\WhatsAppController;
+use App\Http\Controllers\Api\V1\WhatsAppWebhookController;
+use App\Http\Controllers\Api\V1\PaymentWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
+    Route::match(['get', 'post'], 'webhooks/whatsapp/meta', [WhatsAppWebhookController::class, 'meta']);
+    Route::post('webhooks/payments/razorpay', [PaymentWebhookController::class, 'razorpay']);
+
     Route::prefix('auth')->group(function () {
         Route::post('login', [AuthController::class, 'login']);
         Route::post('2fa/verify', [AuthController::class, 'verifyTwoFactor']);
@@ -40,7 +45,7 @@ Route::prefix('v1')->group(function () {
         Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
         Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
 
-        Route::middleware('auth:sanctum')->group(function () {
+        Route::middleware(['auth:sanctum', 'session.timeout'])->group(function () {
             Route::post('logout', [AuthController::class, 'logout']);
             Route::get('me', [AuthController::class, 'me']);
             Route::post('change-password', [AuthController::class, 'changePassword']);
@@ -66,11 +71,12 @@ Route::prefix('v1')->group(function () {
     Route::post('admissions/{admission}/documents', [AdmissionController::class, 'uploadDocuments']);
     Route::post('admissions/{admission}/checkout', [AdmissionController::class, 'checkout']);
     Route::post('admissions/{admission}/confirm-payment', [AdmissionController::class, 'confirmPayment']);
+    Route::get('admissions/{admission}/resume-payment', [AdmissionController::class, 'resumePayment']);
     Route::get('appearance', [SettingController::class, 'publicAppearance']);
     Route::get('platform/config', [SettingController::class, 'publicPlatform']);
     Route::get('security/config', [SettingController::class, 'publicSecurity']);
 
-    Route::middleware(['auth:sanctum', 'ip.whitelist', 'audit.request'])->group(function () {
+    Route::middleware(['auth:sanctum', 'session.timeout', 'ip.whitelist', 'audit.request'])->group(function () {
         Route::get('dashboard/stats', [DashboardController::class, 'stats']);
         Route::get('dashboard/charts', [DashboardController::class, 'charts']);
         Route::get('dashboard/recent-admissions', [DashboardController::class, 'recentAdmissions']);
@@ -215,6 +221,7 @@ Route::prefix('v1')->group(function () {
         Route::get('reports/{type}/pdf', [ReportController::class, 'exportPdf']);
 
         Route::get('whatsapp/templates', [WhatsAppController::class, 'templates']);
+        Route::get('whatsapp/messages', [WhatsAppController::class, 'messages']);
         Route::post('whatsapp/templates', [WhatsAppController::class, 'storeTemplate']);
         Route::put('whatsapp/templates/{id}', [WhatsAppController::class, 'updateTemplate']);
         Route::delete('whatsapp/templates/{id}', [WhatsAppController::class, 'deleteTemplate']);
@@ -241,8 +248,8 @@ Route::prefix('v1')->group(function () {
 
         Route::post('payments/{payment}/whatsapp', [NotificationController::class, 'send'])->defaults('channel', 'whatsapp')->defaults('resource', 'payments');
         Route::post('payments/{payment}/email', [NotificationController::class, 'send'])->defaults('channel', 'email')->defaults('resource', 'payments');
-        Route::post('invoices/{invoice}/email', [NotificationController::class, 'send'])->defaults('channel', 'email')->defaults('resource', 'invoices');
-        Route::post('invoices/{invoice}/whatsapp', [NotificationController::class, 'send'])->defaults('channel', 'whatsapp')->defaults('resource', 'invoices');
+        Route::post('invoices/{invoice}/email', [InvoiceController::class, 'sendEmail']);
+        Route::post('invoices/{invoice}/whatsapp', [InvoiceController::class, 'sendWhatsApp']);
 
         Route::get('student-portal/dashboard', [StudentPortalController::class, 'dashboard']);
         Route::get('student-portal/payments', [StudentPortalController::class, 'payments']);

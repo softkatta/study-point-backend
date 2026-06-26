@@ -19,7 +19,7 @@ class PlanDurationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
+        $this->seedApplication();
     }
 
     public function test_daily_plan_end_date_matches_start_date(): void

@@ -9,37 +9,79 @@ use Illuminate\Support\Str;
 
 class StudentAccountService
 {
+    private bool $lastCredentialsSent = false;
+
     public function __construct(
         private NotificationDispatchService $notifications,
     ) {}
 
+    public function consumeLastCredentialsSent(): bool
+    {
+        $sent = $this->lastCredentialsSent;
+        $this->lastCredentialsSent = false;
+
+        return $sent;
+    }
+
     public function ensureForStudent(Student $student): ?User
     {
+        $provision = $this->provisionForStudent($student);
+
+        if ($provision['password']) {
+            $this->deliverPortalCredentials($student, $provision['password']);
+        }
+
+        return $provision['user'];
+    }
+
+    /**
+     * @return array{user: ?User, password: ?string}
+     */
+    public function provisionForStudent(Student $student): array
+    {
         if (! $student->email) {
-            return null;
+            return ['user' => null, 'password' => null];
         }
 
         $student->loadMissing('user');
 
         if ($student->user_id && $student->user) {
-            return $student->user;
+            return ['user' => $student->user, 'password' => null];
         }
 
+        $password = Str::password(10);
         $existing = User::where('email', $student->email)->first();
+
         if ($existing) {
-            $student->update(['user_id' => $existing->id]);
+            if ($existing->hasAnyRole(['super_admin', 'branch_manager', 'admin'])) {
+                throw new \RuntimeException('This email belongs to a staff account. Use a different email for the student portal.');
+            }
+
+            $existing->update([
+                'password' => Hash::make($password),
+                'password_changed_at' => now(),
+                'name' => $student->name,
+                'phone' => $student->phone ?? $existing->phone,
+                'branch_id' => $student->branch_id ?? $existing->branch_id,
+            ]);
+
             if (! $existing->hasRole('student')) {
                 $existing->assignRole('student');
             }
 
-            return $existing;
+            $student->update(['user_id' => $existing->id]);
+
+            return ['user' => $existing->fresh(), 'password' => $password];
         }
 
-        $password = Str::password(10);
         $user = $this->createPortalUser($student, $password);
-        $this->deferPortalWelcome($student->id, $password);
 
-        return $user;
+        return ['user' => $user, 'password' => $password];
+    }
+
+    public function deliverPortalCredentials(Student $student, string $password): bool
+    {
+        return $this->sendPortalWelcome($student->fresh(), $password);
     }
 
     public function resendPortalCredentials(Student $student): array
@@ -72,7 +114,7 @@ class StudentAccountService
             }
         }
 
-        $sent = $this->sendPortalWelcome($student->fresh(), $password);
+        $sent = $this->sendPortalWelcome($student->fresh(), $password, strict: true);
 
         return [
             'email' => $student->email,
@@ -117,30 +159,26 @@ class StudentAccountService
         }
 
         $user->tokens()->delete();
-        $user->forceDelete();
+        $user->delete();
 
         return true;
     }
 
-    private function deferPortalWelcome(int $studentId, string $password): void
-    {
-        dispatch(function () use ($studentId, $password) {
-            $student = Student::find($studentId);
-            if (! $student) {
-                return;
-            }
-
-            $this->sendPortalWelcome($student, $password);
-        })->afterResponse();
-    }
-
-    private function sendPortalWelcome(Student $student, string $password): bool
+    private function sendPortalWelcome(Student $student, string $password, bool $strict = false): bool
     {
         try {
             $this->notifications->portalWelcome($student, $password);
+            $this->lastCredentialsSent = true;
 
             return true;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            report($e);
+            $this->lastCredentialsSent = false;
+
+            if ($strict) {
+                throw $e;
+            }
+
             return false;
         }
     }

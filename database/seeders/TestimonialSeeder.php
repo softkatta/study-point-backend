@@ -9,37 +9,40 @@ class TestimonialSeeder extends Seeder
 {
     public function run(): void
     {
-        $rows = [
+        $testimonials = [
             [
                 'name' => 'Priya Sharma',
                 'role' => 'UPSC Aspirant',
-                'quote' => 'StudyPoint transformed my preparation. The peaceful environment and 24×7 access helped me crack my exam in the first attempt.',
+                'quote' => 'StudyPoint gave me the discipline and environment I needed. The AC halls and quiet zones helped me stay focused for 10+ hours daily.',
                 'rating' => 5,
                 'avatar' => 'PS',
                 'sort_order' => 1,
             ],
             [
                 'name' => 'Rahul Mehta',
-                'role' => 'CA Student',
-                'quote' => 'Best study library in the city! The individual cabins and high-speed WiFi make it perfect for online exams and study sessions.',
+                'role' => 'Engineering Student',
+                'quote' => 'Affordable plans, great WiFi and biometric entry make it feel premium. I renewed my monthly pass three times in a row.',
                 'rating' => 5,
                 'avatar' => 'RM',
                 'sort_order' => 2,
             ],
             [
-                'name' => 'Sneha Patel',
-                'role' => 'NEET Aspirant',
-                'quote' => 'Very affordable monthly plans and the staff is very supportive. The biometric entry system is super convenient.',
+                'name' => 'Ananya Joshi',
+                'role' => 'CA Final Candidate',
+                'quote' => 'The staff is supportive and the study halls are always clean. Best study library I have used in Mumbai.',
                 'rating' => 5,
-                'avatar' => 'SP',
+                'avatar' => 'AJ',
                 'sort_order' => 3,
             ],
         ];
 
-        foreach ($rows as $row) {
+        foreach ($testimonials as $data) {
             Testimonial::updateOrCreate(
-                ['name' => $row['name'], 'role' => $row['role']],
-                $row + ['status' => 'active'],
+                ['name' => $data['name'], 'role' => $data['role']],
+                [
+                    ...$data,
+                    'status' => 'active',
+                ],
             );
         }
     }

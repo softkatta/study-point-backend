@@ -17,6 +17,7 @@ use App\Models\Student;
 use App\Models\User;
 
 use App\Services\AttendanceService;
+use App\Services\WhatsAppDispatchService;
 
 use App\Support\ApiResponse;
 
@@ -34,7 +35,10 @@ class AttendanceController extends Controller
 
 {
 
-    public function __construct(private AttendanceService $attendance) {}
+    public function __construct(
+        private AttendanceService $attendance,
+        private WhatsAppDispatchService $whatsappDispatch,
+    ) {}
 
 
 
@@ -206,6 +210,12 @@ class AttendanceController extends Controller
 
 
 
+        try {
+            $this->whatsappDispatch->queueAttendanceAlert($student, $log);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return ApiResponse::success(new AttendanceLogResource($log->load(['student', 'branch'])), 'Attendance marked', 201);
 
     }
@@ -247,6 +257,12 @@ class AttendanceController extends Controller
         ]);
 
 
+
+        try {
+            $this->whatsappDispatch->queueAttendanceAlert($attendanceLog->student, $attendanceLog);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return ApiResponse::success(new AttendanceLogResource($attendanceLog->fresh()->load(['student', 'branch'])), 'Check-out recorded');
 
@@ -302,6 +318,12 @@ class AttendanceController extends Controller
             $result = $this->attendance->scanStudentQr($data['qr'], $request->user());
         } catch (\RuntimeException $e) {
             return ApiResponse::error($e->getMessage(), 422);
+        }
+
+        try {
+            $this->whatsappDispatch->queueAttendanceAlert($result['log']->student, $result['log']);
+        } catch (\Throwable $e) {
+            report($e);
         }
 
         return ApiResponse::success($this->scanPayload($result, $request->user()), $result['message'], 201);

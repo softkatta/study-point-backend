@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\AuditService;
 use App\Services\SecurityPolicyService;
 use App\Support\ApiResponse;
+use App\Support\BranchScope;
 use App\Support\Roles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,8 @@ class UserController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = User::with(['branch', 'roles'])->latest();
+
+        BranchScope::apply($query, $request->user(), 'branch_id');
 
         if ($request->filled('role')) {
             $query->role($request->role);
@@ -69,6 +72,10 @@ class UserController extends Controller
 
         $this->assertRolesAssignable($request, $roles);
 
+        if ($branchId = BranchScope::branchId($request->user())) {
+            $data['branch_id'] = $branchId;
+        }
+
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
@@ -87,11 +94,15 @@ class UserController extends Controller
 
     public function show(User $user): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $user);
+
         return ApiResponse::success(new UserResource($user->load(['branch', 'roles', 'permissions'])));
     }
 
     public function update(Request $request, User $user): JsonResponse
     {
+        BranchScope::authorizeModel($request->user(), $user);
+
         $user->loadMissing('roles');
         if ($user->hasRole(Roles::SUPER_ADMIN)) {
             return $this->updateProtectedSuperAdmin($request, $user);
@@ -113,11 +124,20 @@ class UserController extends Controller
             $data['password_changed_at'] = now();
         }
 
+        $scopedBranch = BranchScope::branchId($request->user());
+        if ($scopedBranch) {
+            unset($data['branch_id']);
+        }
+
         if ($request->has('roles') || $request->filled('role')) {
             $roles = $this->validatedRoles($request);
             $this->assertRolesAssignable($request, $roles);
 
-            if (Roles::requiresBranchForRoles($roles) && ! ($data['branch_id'] ?? $user->branch_id)) {
+            if ($scopedBranch && in_array(Roles::SUPER_ADMIN, $roles, true)) {
+                return ApiResponse::error('You cannot assign the super admin role.', 403);
+            }
+
+            if (Roles::requiresBranchForRoles($roles) && ! ($user->branch_id || $scopedBranch || $request->filled('branch_id'))) {
                 return ApiResponse::error('Branch is required for the selected roles.', 422);
             }
 
@@ -127,6 +147,8 @@ class UserController extends Controller
 
             if (! Roles::requiresBranchForRoles($roles)) {
                 $data['branch_id'] = null;
+            } elseif ($scopedBranch) {
+                $data['branch_id'] = $scopedBranch;
             }
         }
 
@@ -138,6 +160,8 @@ class UserController extends Controller
 
     public function destroy(User $user): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $user);
+
         if ($user->id === request()->user()?->id) {
             return ApiResponse::error('Cannot delete your own account.', 403);
         }
@@ -165,6 +189,8 @@ class UserController extends Controller
 
     public function changeRole(Request $request, User $user): JsonResponse
     {
+        BranchScope::authorizeModel($request->user(), $user);
+
         if ($this->isProtectedSuperAdmin($user)) {
             return ApiResponse::error('Super Admin roles cannot be changed.', 422);
         }
@@ -179,7 +205,12 @@ class UserController extends Controller
         $roles = $this->validatedRoles($request);
         $this->assertRolesAssignable($request, $roles);
 
-        if (Roles::requiresBranchForRoles($roles) && ! $user->branch_id && ! $request->filled('branch_id')) {
+        $scopedBranch = BranchScope::branchId($request->user());
+        if ($scopedBranch && in_array(Roles::SUPER_ADMIN, $roles, true)) {
+            return ApiResponse::error('You cannot assign the super admin role.', 403);
+        }
+
+        if (Roles::requiresBranchForRoles($roles) && ! $user->branch_id && ! $request->filled('branch_id') && ! $scopedBranch) {
             return ApiResponse::error('Branch is required for the selected roles.', 422);
         }
 
@@ -187,7 +218,9 @@ class UserController extends Controller
         $user->syncPermissions([]);
         app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
-        if ($request->filled('branch_id')) {
+        if ($scopedBranch) {
+            $user->update(['branch_id' => $scopedBranch]);
+        } elseif ($request->filled('branch_id')) {
             $user->update(['branch_id' => $request->integer('branch_id')]);
         } elseif (! Roles::requiresBranchForRoles($roles)) {
             $user->update(['branch_id' => null]);
@@ -232,6 +265,8 @@ class UserController extends Controller
 
     public function activate(User $user): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $user);
+
         if ($this->isProtectedSuperAdmin($user)) {
             return ApiResponse::error('Super Admin account status cannot be changed.', 422);
         }
@@ -243,6 +278,8 @@ class UserController extends Controller
 
     public function deactivate(User $user): JsonResponse
     {
+        BranchScope::authorizeModel(request()->user(), $user);
+
         if ($this->isProtectedSuperAdmin($user)) {
             return ApiResponse::error('Super Admin account status cannot be changed.', 422);
         }

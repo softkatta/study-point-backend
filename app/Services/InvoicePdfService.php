@@ -7,12 +7,12 @@ use App\Models\Setting;
 use App\Support\AppearanceDefaults;
 use Dompdf\Dompdf;
 use Dompdf\Options;
-use Illuminate\Support\Facades\Storage;
 
 class InvoicePdfService
 {
     public function __construct(
         private AppSettingsService $settings,
+        private BrandingPdfCacheService $brandingPdf,
     ) {}
 
     /**
@@ -28,6 +28,7 @@ class InvoicePdfService
             : 'modern';
         $appearance = AppearanceDefaults::merge(Setting::getSection('appearance'));
         $gstAmount = (float) $invoice->gst_amount;
+        $logoSrc = $this->brandingPdf->logoDataUri($appearance['logo_url'] ?? null);
 
         $view = match ($template) {
             'classic' => 'pdf.invoice-classic',
@@ -43,8 +44,9 @@ class InvoicePdfService
             'invoiceSettings' => $invoiceSettings,
             'cgst' => round($gstAmount / 2, 2),
             'sgst' => round($gstAmount / 2, 2),
-            'logoDataUri' => $this->logoDataUri($invoiceSettings, $appearance),
+            'logoSrc' => $logoSrc,
             'siteName' => $appearance['site_name'] ?? 'StudyPoint',
+            ...$this->partyContext($invoice),
         ])->render();
 
         $options = new Options;
@@ -64,29 +66,23 @@ class InvoicePdfService
     }
 
     /**
-     * @param  array<string, mixed>  $invoiceSettings
-     * @param  array<string, mixed>  $appearance
+     * @return array{branch: ?\App\Models\Branch, branchAddressLine: string, studentAddress: string}
      */
-    private function logoDataUri(array $invoiceSettings, array $appearance): ?string
+    private function partyContext(Invoice $invoice): array
     {
-        $url = $appearance['logo_url'] ?? null;
-        if (! $url) {
-            return null;
-        }
+        $student = $invoice->student;
+        $branch = $student?->branch;
+        $admission = $student?->admission;
 
-        $path = null;
-        if (preg_match('#/storage/(.+)$#', (string) $url, $matches)) {
-            $path = $matches[1];
-        } elseif (str_starts_with((string) $url, 'storage/')) {
-            $path = substr((string) $url, strlen('storage/'));
-        }
-
-        if (! $path || ! Storage::disk('public')->exists($path)) {
-            return null;
-        }
-
-        $mime = Storage::disk('public')->mimeType($path) ?: 'image/png';
-
-        return 'data:'.$mime.';base64,'.base64_encode(Storage::disk('public')->get($path));
+        return [
+            'branch' => $branch,
+            'branchAddressLine' => collect([$branch?->address, $branch?->city])->filter()->implode(', '),
+            'studentAddress' => collect([
+                $admission?->address,
+                $admission?->city ?? $student?->city,
+                $admission?->state,
+                $admission?->pincode,
+            ])->filter()->implode(', '),
+        ];
     }
 }

@@ -6,6 +6,7 @@ use App\Models\Admission;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Student;
+use App\Support\AdmissionPaymentLink;
 
 class NotificationDispatchService
 {
@@ -13,43 +14,137 @@ class NotificationDispatchService
         private AppSettingsService $settings,
         private MailSenderService $mailer,
         private WhatsAppSenderService $whatsapp,
+        private WhatsAppDispatchService $whatsappDispatch,
         private NotificationChannelService $channels,
         private InvoicePdfService $invoicePdf,
     ) {}
 
-    public function admissionSubmitted(Admission $admission): void
+    /**
+     * Stage 1 — public registration without payment: welcome + admission received.
+     */
+    public function admissionReceivedWelcome(Admission $admission): void
     {
         $prefs = $this->channels->channelsForAdmission($admission);
-        $message = "StudyPoint: Your admission {$admission->admission_code} has been received.\n\n"
+        if ((! $prefs['email'] && ! $prefs['whatsapp']) || (! $admission->email && ! $admission->phone)) {
+            return;
+        }
+
+        $message = "Welcome to StudyPoint!\n\n"
+            ."Your admission {$admission->admission_code} has been received.\n\n"
             ."Name: {$admission->name}\n"
             ."Plan: {$admission->plan_name}\n"
             ."Amount: ₹{$admission->amount}\n\n"
-            .'Complete payment to activate your membership.';
+            .'Complete payment to activate your membership. Portal login details will be emailed after payment confirmation.';
+
+        $paymentUrl = $this->admissionPaymentUrl($admission);
 
         $this->dispatchToContact(
             $admission->email,
             $admission->phone,
             $prefs,
-            'Admission Received — StudyPoint',
+            'Welcome to StudyPoint — Admission Received',
             $message,
-            null,
+            "StudyPoint: Admission {$admission->admission_code} received. Pay now: {$paymentUrl}",
             [
-                'title' => 'Admission received!',
+                'title' => 'Welcome to our family!',
                 'eyebrow' => 'Admission',
                 'paragraphs' => [
-                    'Thank you for choosing StudyPoint. We have received your admission request and it is now in our system.',
-                    'Complete payment to activate your membership. Our team will review and approve your admission after payment confirmation.',
+                    'Welcome to StudyPoint! We are delighted that you chose us for your study library membership.',
+                    'Your admission request has been received and saved in our system. Click the button below to complete your payment — we will email your payment receipt, GST invoice, and portal login details once payment is confirmed.',
                 ],
                 'details' => [
                     ['label' => 'Admission code', 'value' => $admission->admission_code],
                     ['label' => 'Name', 'value' => $admission->name],
-                    ['label' => 'Plan', 'value' => $admission->plan_name],
+                    ['label' => 'Plan', 'value' => $admission->plan_name ?? '-'],
                     ['label' => 'Amount', 'value' => '₹'.$admission->amount],
                 ],
-                'cta_label' => 'Complete payment',
-                'cta_url' => $this->frontendUrl('/admission'),
+                'cta_label' => 'Make payment',
+                'cta_url' => $paymentUrl,
             ],
         );
+    }
+
+    /**
+     * Stage 2 — after payment: payment receipt + portal credentials in one email.
+     */
+    public function studentActivationNotice(
+        Student $student,
+        Admission $admission,
+        Payment $payment,
+        string $temporaryPassword,
+    ): void {
+        $student->loadMissing('admission');
+        $admissionPrefs = $this->channels->channelsForAdmission($admission);
+        $email = $student->email ?: $admission->email;
+        $phone = $student->phone ?: $admission->phone;
+
+        if (! $email) {
+            throw new \RuntimeException('Student email is required to send activation notification.');
+        }
+
+        $this->assertMailConfigured();
+
+        $paragraphs = [
+            'Great news — your payment has been received and your StudyPoint membership is now active.',
+            'Your payment receipt details and student portal login credentials are below. Your GST invoice is attached to this email. Please sign in and change your temporary password after your first login.',
+        ];
+
+        $details = [
+            ['label' => 'Receipt no.', 'value' => $payment->payment_code],
+            ['label' => 'Amount paid', 'value' => '₹'.$payment->amount],
+            ['label' => 'Payment method', 'value' => ucfirst((string) ($payment->method ?? 'payment'))],
+            [
+                'label' => 'Payment date',
+                'value' => optional($payment->paid_at ?? $payment->created_at)->format('d M Y') ?? '-',
+            ],
+            ['label' => 'Member ID', 'value' => $student->student_code],
+            ['label' => 'Login email', 'value' => $email],
+            ['label' => 'Temporary password', 'value' => $temporaryPassword],
+        ];
+
+        $message = implode("\n", [
+            'StudyPoint — Payment confirmed & portal access',
+            '',
+            "Receipt: {$payment->payment_code}",
+            "Amount paid: ₹{$payment->amount}",
+            '',
+            "Member ID: {$student->student_code}",
+            "Login email: {$email}",
+            "Temporary password: {$temporaryPassword}",
+        ]);
+
+        $waMessage = "StudyPoint payment confirmed!\n"
+            ."Receipt: {$payment->payment_code} · ₹{$payment->amount}\n"
+            ."Member ID: {$student->student_code}\n"
+            ."Email: {$email}\n"
+            ."Password: {$temporaryPassword}";
+
+        $attachments = $this->invoiceAttachmentsForPayment($payment);
+
+        $this->mailer->send(
+            $email,
+            'StudyPoint — Payment Confirmed & Portal Access',
+            $message,
+            null,
+            [
+                'title' => 'Membership activated!',
+                'eyebrow' => 'Payment & Portal',
+                'paragraphs' => $paragraphs,
+                'details' => $details,
+                'cta_label' => 'Sign in to portal',
+                'cta_url' => $this->frontendUrl('/login'),
+            ],
+            $attachments,
+        );
+
+        if ($admissionPrefs['whatsapp'] && $phone) {
+            try {
+                $pdf = $attachments[0] ?? null;
+                $this->whatsappDispatch->queuePaymentConfirmation($payment, $waMessage, $pdf);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
     }
 
     public function paymentReceipt(Payment $payment): void
@@ -69,30 +164,48 @@ class NotificationDispatchService
         $prefs = $this->channels->channelsForAdmission($admission);
         $message = "StudyPoint: Payment of ₹{$payment->amount} received. Receipt: {$payment->payment_code}.";
 
-        $this->dispatchToContact(
-            $student?->email ?? $admission?->email,
-            $student?->phone ?? $admission?->phone,
-            $prefs,
-            'StudyPoint — Payment Receipt',
-            $message,
-            null,
-            [
-                'title' => 'Payment received',
-                'eyebrow' => 'Payment',
-                'paragraphs' => [
-                    'We have successfully received your payment. Thank you for your trust in StudyPoint.',
-                    'Your receipt details are below for your records.',
+        if ($prefs['email']) {
+            $this->dispatchEmailToContact(
+                $student?->email ?? $admission?->email,
+                'StudyPoint — Payment Receipt',
+                $message,
+                [
+                    'title' => 'Payment received',
+                    'eyebrow' => 'Payment',
+                    'paragraphs' => [
+                        'We have successfully received your payment. Thank you for your trust in StudyPoint.',
+                        'Your receipt details are below for your records.',
+                    ],
+                    'details' => [
+                        ['label' => 'Receipt no.', 'value' => $payment->payment_code],
+                        ['label' => 'Amount', 'value' => '₹'.$payment->amount],
+                        ['label' => 'Method', 'value' => ucfirst((string) ($payment->method ?? 'payment'))],
+                        ['label' => 'Status', 'value' => ucfirst((string) ($payment->status ?? 'paid'))],
+                    ],
+                    'cta_label' => 'View portal',
+                    'cta_url' => $this->frontendUrl('/login'),
                 ],
-                'details' => [
-                    ['label' => 'Receipt no.', 'value' => $payment->payment_code],
-                    ['label' => 'Amount', 'value' => '₹'.$payment->amount],
-                    ['label' => 'Method', 'value' => ucfirst((string) ($payment->method ?? 'payment'))],
-                    ['label' => 'Status', 'value' => ucfirst((string) ($payment->status ?? 'paid'))],
-                ],
-                'cta_label' => 'View portal',
-                'cta_url' => $this->frontendUrl('/login'),
-            ],
-        );
+            );
+        }
+
+        if ($prefs['whatsapp']) {
+            try {
+                $invoice = $payment->student_id
+                    ? \App\Models\Invoice::query()->where('payment_id', $payment->id)->latest('id')->first()
+                    : null;
+                $pdf = null;
+                if ($invoice) {
+                    try {
+                        $pdf = $this->invoicePdf->build($invoice);
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
+                }
+                $this->whatsappDispatch->queuePaymentConfirmation($payment, $message, $pdf);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
     }
 
     public function invoiceGenerated(Invoice $invoice): void
@@ -118,7 +231,11 @@ class NotificationDispatchService
         }
 
         if (($invoiceSettings['send_whatsapp_on_generate'] ?? false) && $prefs['whatsapp']) {
-            $this->sendWhatsApp($student->phone, $message);
+            try {
+                $this->whatsappDispatch->queueInvoice($invoice, $this->invoicePdf);
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
     }
 
@@ -129,6 +246,8 @@ class NotificationDispatchService
         if (! $student?->email) {
             throw new \RuntimeException('Student email not found.');
         }
+
+        $this->assertMailConfigured();
 
         $pdf = $this->invoicePdf->build($invoice);
         $message = "StudyPoint: Please find your invoice {$invoice->invoice_code} attached as a PDF.\n\nTotal: ₹{$invoice->total}.";
@@ -157,37 +276,117 @@ class NotificationDispatchService
         );
     }
 
+    public function sendInvoiceWhatsApp(Invoice $invoice): void
+    {
+        $invoice->loadMissing('student.admission');
+        $student = $invoice->student;
+
+        if (! $student?->phone) {
+            throw new \RuntimeException('Student phone number not found.');
+        }
+
+        if (! $this->whatsapp->isConfigured()) {
+            throw new \RuntimeException('WhatsApp is not configured. Go to Admin → Settings → WhatsApp and complete setup.');
+        }
+
+        $message = "StudyPoint invoice {$invoice->invoice_code}\n"
+            ."Amount: ₹{$invoice->amount}\n"
+            ."GST: ₹{$invoice->gst_amount}\n"
+            ."Total: ₹{$invoice->total}\n"
+            .'View in portal: '.$this->frontendUrl('/student/invoices');
+
+        $this->whatsappDispatch->queueInvoice($invoice, $this->invoicePdf);
+    }
+
     public function portalWelcome(Student $student, string $temporaryPassword): void
     {
         $student->loadMissing('admission');
-        $prefs = $this->channels->channelsForAdmission($student->admission);
+        $admission = $this->resolveAdmissionForStudent($student);
+        $payment = $this->resolvePaidPaymentForStudent($student, $admission);
 
-        $message = "Welcome to StudyPoint!\n\nMember ID: {$student->student_code}\nLogin email: {$student->email}\nTemporary password: {$temporaryPassword}\n\nPlease sign in and change your password.";
-        $waMessage = "StudyPoint portal login:\nMember ID: {$student->student_code}\nEmail: {$student->email}\nPassword: {$temporaryPassword}\n\nLogin and change your password.";
+        if (! $payment) {
+            throw new \RuntimeException('A paid payment record is required to send activation notification.');
+        }
 
-        $this->dispatchToContact(
-            $student->email,
-            $student->phone,
-            $prefs,
-            'Welcome to StudyPoint — Portal Access',
-            $message,
-            $waMessage,
-            [
-                'title' => 'Welcome to our family!',
-                'eyebrow' => 'Welcome',
-                'paragraphs' => [
-                    'Your StudyPoint student portal account is now active. Use the credentials below to sign in.',
-                    'For your security, please change your temporary password immediately after your first login.',
-                ],
-                'details' => [
-                    ['label' => 'Member ID', 'value' => $student->student_code],
-                    ['label' => 'Login email', 'value' => $student->email],
-                    ['label' => 'Temporary password', 'value' => $temporaryPassword],
-                ],
-                'cta_label' => 'Sign in to portal',
-                'cta_url' => $this->frontendUrl('/login'),
-            ],
-        );
+        $this->studentActivationNotice($student, $admission, $payment, $temporaryPassword);
+    }
+
+    private function admissionPaymentUrl(Admission $admission): string
+    {
+        return AdmissionPaymentLink::frontendUrl($admission->id);
+    }
+
+    /**
+     * @return array<int, array{content: string, filename?: string, name?: string, mime?: string}>
+     */
+    private function invoiceAttachmentsForPayment(Payment $payment): array
+    {
+        if ($payment->status !== 'paid' || ! $payment->student_id) {
+            return [];
+        }
+
+        try {
+            $invoice = app(InvoiceService::class)->createForPayment($payment->fresh(['student']), sendNotification: false);
+            $pdf = $this->invoicePdf->build($invoice);
+
+            return [$pdf];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
+    }
+
+    private function assertMailConfigured(): void
+    {
+        if (! $this->mailer->isConfigured()) {
+            throw new \RuntimeException('Email is not configured. Go to Admin → Settings → Email and complete SMTP setup.');
+        }
+    }
+
+    private function resolveAdmissionForStudent(Student $student): Admission
+    {
+        if ($student->admission) {
+            return $student->admission;
+        }
+
+        $latestPayment = Payment::query()
+            ->where('student_id', $student->id)
+            ->where('status', 'paid')
+            ->latest('id')
+            ->first();
+
+        return new Admission([
+            'admission_code' => $student->student_code,
+            'name' => $student->name,
+            'email' => $student->email,
+            'phone' => $student->phone,
+            'plan_name' => $student->plan_name ?? '-',
+            'amount' => $latestPayment?->amount ?? 0,
+            'notify_email' => true,
+            'notify_whatsapp' => false,
+        ]);
+    }
+
+    private function resolvePaidPaymentForStudent(Student $student, Admission $admission): ?Payment
+    {
+        if ($admission->exists) {
+            $payment = Payment::query()
+                ->where('admission_id', $admission->id)
+                ->where('status', 'paid')
+                ->latest('id')
+                ->first();
+
+            if ($payment) {
+                return $payment;
+            }
+        }
+
+        return Payment::query()
+            ->where('student_id', $student->id)
+            ->where('status', 'paid')
+            ->latest('id')
+            ->first();
     }
 
     public function contactFormReceived(array $data): void
@@ -252,10 +451,30 @@ class NotificationDispatchService
 
         if ($prefs['whatsapp'] && $phone) {
             try {
-                $this->whatsapp->send($phone, $whatsappBody);
-            } catch (\Throwable) {
-                // non-blocking
+                $this->whatsappDispatch->queueText($phone, $whatsappBody);
+            } catch (\Throwable $e) {
+                report($e);
             }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $emailTemplate
+     */
+    private function dispatchEmailToContact(
+        ?string $email,
+        string $emailSubject,
+        string $emailBody,
+        array $emailTemplate = [],
+    ): void {
+        if (! $email) {
+            return;
+        }
+
+        try {
+            $this->mailer->send($email, $emailSubject, $emailBody, null, $emailTemplate);
+        } catch (\Throwable) {
+            // non-blocking
         }
     }
 

@@ -18,7 +18,7 @@ class SubscriptionAfterAdmissionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed();
+        $this->seedApplication();
     }
 
     public function test_approve_creates_portal_user_and_subscription(): void

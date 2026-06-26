@@ -571,8 +571,7 @@ class SubscriptionService
 
             $linkedAdmissionIds = Admission::where('subscription_id', $subscription->id)->pluck('id');
 
-            $paymentIds = Payment::withTrashed()
-                ->where(function ($query) use ($subscription, $linkedAdmissionIds) {
+            $paymentIds = Payment::where(function ($query) use ($subscription, $linkedAdmissionIds) {
                     $query->where('subscription_id', $subscription->id);
                     if ($linkedAdmissionIds->isNotEmpty()) {
                         $query->orWhereIn('admission_id', $linkedAdmissionIds);
@@ -581,19 +580,17 @@ class SubscriptionService
                 ->pluck('id');
 
             if ($paymentIds->isNotEmpty()) {
-                Invoice::withTrashed()
-                    ->whereIn('payment_id', $paymentIds)
-                    ->forceDelete();
+                Invoice::whereIn('payment_id', $paymentIds)
+                    ->delete();
 
-                Payment::withTrashed()
-                    ->whereIn('id', $paymentIds)
-                    ->forceDelete();
+                Payment::whereIn('id', $paymentIds)
+                    ->delete();
             }
 
             Admission::where('subscription_id', $subscription->id)
                 ->update(['subscription_id' => null]);
 
-            $subscription->forceDelete();
+            $subscription->delete();
 
             if ($student) {
                 $this->syncStudentMembership($student->fresh());
@@ -711,8 +708,7 @@ class SubscriptionService
     private function nextSubscriptionCode(): string
     {
         $year = date('Y');
-        $last = Subscription::withTrashed()
-            ->where('subscription_code', 'like', "SUB-{$year}-%")
+        $last = Subscription::where('subscription_code', 'like', "SUB-{$year}-%")
             ->orderByDesc('id')
             ->value('subscription_code');
         $num = $last ? (int) substr($last, -3) + 1 : 1;
@@ -723,8 +719,7 @@ class SubscriptionService
     private function nextPaymentCode(): string
     {
         $year = date('Y');
-        $last = Payment::withTrashed()
-            ->where('payment_code', 'like', "PAY-{$year}-%")
+        $last = Payment::where('payment_code', 'like', "PAY-{$year}-%")
             ->orderByDesc('id')
             ->value('payment_code');
         $num = $last ? (int) substr($last, -3) + 1 : 1;

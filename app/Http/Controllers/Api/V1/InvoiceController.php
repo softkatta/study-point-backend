@@ -8,8 +8,10 @@ use App\Models\Invoice;
 use App\Services\AppSettingsService;
 use App\Services\InvoicePdfService;
 use App\Services\InvoiceService;
+use App\Services\NotificationDispatchService;
 use App\Support\ApiResponse;
 use App\Support\BranchScope;
+use App\Support\StudentScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -92,14 +94,122 @@ class InvoiceController extends Controller
         ]);
     }
 
-    public function pdf(Invoice $invoice, InvoicePdfService $pdf)
+    public function pdf(Request $request, Invoice $invoice, InvoicePdfService $pdf)
     {
-        $built = $pdf->build($invoice);
+        $invoice->loadMissing(['student.branch', 'student.admission']);
+
+        if ($response = $this->authorizeInvoiceAccess($request, $invoice)) {
+            return $response;
+        }
+
+        try {
+            $built = $pdf->build($invoice);
+        } catch (\Throwable $e) {
+            report($e);
+
+            $message = str_contains($e->getMessage(), 'GD extension')
+                ? 'Invoice PDF requires the PHP GD extension on the server. Enable extension=gd in php.ini and restart the API.'
+                : 'Could not generate invoice PDF. '.$e->getMessage();
+
+            return ApiResponse::error($message, 500);
+        }
 
         return response($built['content'], 200, [
             'Content-Type' => $built['mime'],
             'Content-Disposition' => 'attachment; filename="'.$built['filename'].'"',
         ]);
+    }
+
+    public function sendEmail(Request $request, Invoice $invoice, NotificationDispatchService $notifications): JsonResponse
+    {
+        if ($response = $this->authorizeStaffInvoiceAccess($request, $invoice)) {
+            return $response;
+        }
+
+        try {
+            $invoice->loadMissing('student');
+            $notifications->sendInvoiceEmail($invoice);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return ApiResponse::error($e->getMessage(), 422);
+        }
+
+        return ApiResponse::success([
+            'sent' => true,
+            'email' => $invoice->student?->email,
+        ], 'Invoice emailed to student with PDF attachment');
+    }
+
+    public function sendWhatsApp(Request $request, Invoice $invoice, NotificationDispatchService $notifications): JsonResponse
+    {
+        if ($response = $this->authorizeStaffInvoiceAccess($request, $invoice)) {
+            return $response;
+        }
+
+        try {
+            $invoice->loadMissing('student');
+            $notifications->sendInvoiceWhatsApp($invoice);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return ApiResponse::error($e->getMessage(), 422);
+        }
+
+        return ApiResponse::success([
+            'queued' => true,
+            'phone' => $invoice->student?->phone,
+        ], 'Invoice notification queued via WhatsApp');
+    }
+
+    private function authorizeStaffInvoiceAccess(Request $request, Invoice $invoice): ?JsonResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            return ApiResponse::error('Unauthorized', 401);
+        }
+
+        if ($user->hasRole('student')) {
+            return ApiResponse::error('Only staff can send invoice notifications.', 403);
+        }
+
+        if ($branchId = BranchScope::branchId($user)) {
+            $invoice->loadMissing('student');
+            if (! $invoice->student || (int) $invoice->student->branch_id !== $branchId) {
+                return ApiResponse::error('Invoice does not belong to your branch.', 403);
+            }
+        }
+
+        return null;
+    }
+
+    private function authorizeInvoiceAccess(Request $request, Invoice $invoice): ?JsonResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            return ApiResponse::error('Unauthorized', 401);
+        }
+
+        if ($user->hasRole('student')) {
+            $student = StudentScope::require($user);
+            if ($student instanceof JsonResponse) {
+                return $student;
+            }
+
+            if ((int) $invoice->student_id !== (int) $student->id) {
+                return ApiResponse::error('You can only download your own invoices.', 403);
+            }
+
+            return null;
+        }
+
+        if ($branchId = BranchScope::branchId($user)) {
+            if (! $invoice->student || (int) $invoice->student->branch_id !== $branchId) {
+                return ApiResponse::error('Invoice does not belong to your branch.', 403);
+            }
+        }
+
+        return null;
     }
 
     public function update(Request $request, Invoice $invoice): JsonResponse

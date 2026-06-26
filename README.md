@@ -51,16 +51,16 @@ app/
 
 ## Initial Login (after seed)
 
-One super admin is created by the seeder (password set only on first create):
+The seeder creates **roles, super admin, starter branches, plans, facilities, FAQs and testimonials**. Staff users and live admissions must still be added from the admin panel.
 
-- `admin@studypoint.in` / `demo1234` (super_admin)
+Default credentials (override via `.env`):
 
-Override via `.env`:
+- `admin@studypoint.in` / value of `SEED_SUPER_ADMIN_PASSWORD` (super_admin)
 
 ```
 SEED_SUPER_ADMIN_EMAIL=admin@studypoint.in
 SEED_SUPER_ADMIN_NAME=Super Admin
-SEED_SUPER_ADMIN_PASSWORD=demo1234
+SEED_SUPER_ADMIN_PASSWORD=change-me-before-seeding
 ```
 
 Re-running `php artisan db:seed` updates the super admin name/status but **does not reset the password**.
