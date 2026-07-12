@@ -17,6 +17,7 @@ use App\Models\Student;
 use App\Models\User;
 
 use App\Services\AttendanceService;
+use App\Services\NotificationDispatchService;
 use App\Services\WhatsAppDispatchService;
 
 use App\Support\ApiResponse;
@@ -38,6 +39,7 @@ class AttendanceController extends Controller
     public function __construct(
         private AttendanceService $attendance,
         private WhatsAppDispatchService $whatsappDispatch,
+        private NotificationDispatchService $notifications,
     ) {}
 
 
@@ -216,6 +218,12 @@ class AttendanceController extends Controller
             report($e);
         }
 
+        try {
+            $this->notifications->attendanceAlert($student, $log);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return ApiResponse::success(new AttendanceLogResource($log->load(['student', 'branch'])), 'Attendance marked', 201);
 
     }
@@ -260,6 +268,12 @@ class AttendanceController extends Controller
 
         try {
             $this->whatsappDispatch->queueAttendanceAlert($attendanceLog->student, $attendanceLog);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            $this->notifications->attendanceAlert($attendanceLog->student, $attendanceLog);
         } catch (\Throwable $e) {
             report($e);
         }
@@ -322,6 +336,12 @@ class AttendanceController extends Controller
 
         try {
             $this->whatsappDispatch->queueAttendanceAlert($result['log']->student, $result['log']);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            $this->notifications->attendanceAlert($result['log']->student, $result['log']);
         } catch (\Throwable $e) {
             report($e);
         }

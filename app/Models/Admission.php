@@ -13,10 +13,11 @@ class Admission extends Model
     protected $fillable = [
         'admission_code', 'source', 'status', 'first_name', 'last_name', 'name',
         'email', 'phone', 'date_of_birth', 'gender', 'address', 'city', 'state', 'pincode',
-        'emergency_name', 'emergency_phone', 'emergency_relation',
+        'emergency_name', 'emergency_phone', 'emergency_email', 'emergency_relation',
         'branch_id', 'plan_id', 'plan_name', 'start_date', 'duration_months', 'amount',
         'payment_mode', 'payment_status', 'transaction_id', 'payment_date',
         'documents_uploaded', 'referral_source', 'notes', 'notify_email', 'notify_whatsapp',
+        'notify_parent_email', 'notify_parent_whatsapp',
         'follow_up_date', 'follow_up_note', 'rejection_reason',
         'verified_at', 'approved_at', 'student_id', 'subscription_id', 'created_by',
     ];
@@ -29,6 +30,8 @@ class Admission extends Model
             'documents_uploaded' => 'boolean',
             'notify_email' => 'boolean',
             'notify_whatsapp' => 'boolean',
+            'notify_parent_email' => 'boolean',
+            'notify_parent_whatsapp' => 'boolean',
             'date_of_birth' => 'date',
             'start_date' => 'date',
             'payment_date' => 'date',

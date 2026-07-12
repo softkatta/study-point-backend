@@ -2,10 +2,16 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Jobs\SendWhatsAppMessageJob;
+use App\Models\Admission;
+use App\Models\AttendanceLog;
+use App\Models\Setting;
+use App\Models\Student;
 use App\Models\User;
 use App\Models\WhatsAppMessage;
 use App\Services\WhatsAppMessageLogService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -46,6 +52,68 @@ class WhatsAppIntegrationTest extends TestCase
         $this->assertNotNull($message);
         $this->assertSame('sent', $message->fresh()->status);
         $this->assertSame('wamid.test123', $message->external_id);
+    }
+
+    public function test_attendance_alert_is_queued_for_student_and_emergency_contact(): void
+    {
+        $admin = User::where('email', 'admin@studypoint.in')->first();
+        Sanctum::actingAs($admin);
+
+        Setting::saveSection('whatsapp', [
+            'provider' => 'meta_cloud',
+            'meta_phone_number_id' => '1096089260264884',
+            'meta_access_token' => 'test-token',
+            'notify_attendance' => true,
+            'template_attendance' => 'studypoint_attendance',
+        ]);
+
+        Bus::fake();
+
+        $admission = Admission::create([
+            'admission_code' => 'ADM-100',
+            'source' => 'online',
+            'status' => 'active',
+            'first_name' => 'Test',
+            'last_name' => 'Student',
+            'name' => 'Test Student',
+            'email' => 'student@test.com',
+            'phone' => '9876543210',
+            'start_date' => now()->toDateString(),
+            'plan_name' => 'Monthly',
+            'amount' => 1000,
+            'payment_status' => 'paid',
+            'emergency_name' => 'Parent',
+            'emergency_phone' => '9123456789',
+            'emergency_relation' => 'Father',
+        ]);
+
+        $student = Student::create([
+            'student_code' => 'STU-100',
+            'verify_token' => 'verifytest100',
+            'qr_token' => 'qrtest100',
+            'name' => 'Test Student',
+            'email' => 'student@test.com',
+            'phone' => '9876543210',
+            'status' => 'active',
+            'plan_name' => 'Monthly',
+            'admission_id' => $admission->id,
+        ]);
+
+        $log = AttendanceLog::create([
+            'student_id' => $student->id,
+            'branch_id' => null,
+            'check_in' => now(),
+            'status' => 'present',
+            'source' => 'manual',
+        ]);
+
+        $dispatch = app(\App\Services\WhatsAppDispatchService::class);
+        $dispatch->queueAttendanceAlert($student, $log);
+
+        $this->assertDatabaseHas('whatsapp_messages', ['to_phone' => '9876543210']);
+        $this->assertDatabaseHas('whatsapp_messages', ['to_phone' => '9123456789']);
+
+        Bus::assertDispatched(SendWhatsAppMessageJob::class, 2);
     }
 
     public function test_meta_template_with_named_placeholders_orders_parameters(): void

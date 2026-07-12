@@ -47,6 +47,7 @@ class AdmissionService
             'pincode' => $data['pincode'] ?? null,
             'emergency_name' => $data['emergency_name'] ?? null,
             'emergency_phone' => $data['emergency_phone'] ?? null,
+            'emergency_email' => $data['emergency_email'] ?? null,
             'emergency_relation' => $data['emergency_relation'] ?? null,
             'branch_id' => $data['branch_id'] ?? null,
             'plan_id' => $plan?->id,
@@ -63,6 +64,8 @@ class AdmissionService
             'notes' => $data['notes'] ?? null,
             'notify_email' => $this->resolveNotifyEmail($data, $source),
             'notify_whatsapp' => $this->resolveNotifyWhatsapp($data, $source),
+            'notify_parent_email' => $this->resolveNotifyParentEmail($data),
+            'notify_parent_whatsapp' => $this->resolveNotifyParentWhatsapp($data),
             'created_by' => $userId,
         ]);
 
@@ -392,6 +395,16 @@ class AdmissionService
         }
 
         return (bool) ($data['notify_whatsapp'] ?? true);
+    }
+
+    private function resolveNotifyParentEmail(array $data): bool
+    {
+        return (bool) ($data['notify_parent_email'] ?? false);
+    }
+
+    private function resolveNotifyParentWhatsapp(array $data): bool
+    {
+        return (bool) ($data['notify_parent_whatsapp'] ?? false);
     }
 
     private function nextCode(): string

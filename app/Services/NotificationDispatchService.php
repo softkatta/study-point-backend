@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Admission;
+use App\Models\AttendanceLog;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Student;
@@ -62,6 +63,35 @@ class NotificationDispatchService
                 'cta_url' => $paymentUrl,
             ],
         );
+
+        if ($prefs['email']
+            && $admission->emergency_email
+            && $admission->emergency_email !== $admission->email
+            && $this->parentEmailNotificationsEnabled()
+            && $admission->notify_parent_email
+        ) {
+            $this->dispatchEmailToContact(
+                $admission->emergency_email,
+                'Welcome to StudyPoint — Admission Received',
+                $message,
+                [
+                    'title' => 'Welcome to our family!',
+                    'eyebrow' => 'Admission',
+                    'paragraphs' => [
+                        'Welcome to StudyPoint! We are delighted that you chose us for your study library membership.',
+                        'Your admission request has been received and saved in our system. Click the button below to complete your payment — we will email your payment receipt, GST invoice, and portal login details once payment is confirmed.',
+                    ],
+                    'details' => [
+                        ['label' => 'Admission code', 'value' => $admission->admission_code],
+                        ['label' => 'Name', 'value' => $admission->name],
+                        ['label' => 'Plan', 'value' => $admission->plan_name ?? '-'],
+                        ['label' => 'Amount', 'value' => '₹'.$admission->amount],
+                    ],
+                    'cta_label' => 'Make payment',
+                    'cta_url' => $paymentUrl,
+                ],
+            );
+        }
     }
 
     /**
@@ -121,11 +151,11 @@ class NotificationDispatchService
 
         $attachments = $this->invoiceAttachmentsForPayment($payment);
 
-        $this->mailer->send(
+        $this->sendEmailToStudentAndEmergency(
             $email,
+            $admission->emergency_email,
             'StudyPoint — Payment Confirmed & Portal Access',
             $message,
-            null,
             [
                 'title' => 'Membership activated!',
                 'eyebrow' => 'Payment & Portal',
@@ -135,20 +165,9 @@ class NotificationDispatchService
                 'cta_url' => $this->frontendUrl('/login'),
             ],
             $attachments,
+            $this->parentEmailNotificationsEnabled() && $admission->notify_parent_email,
         );
 
-        if ($admissionPrefs['whatsapp'] && $phone) {
-            try {
-                $pdf = $attachments[0] ?? null;
-                $this->whatsappDispatch->queuePaymentConfirmation($payment, $waMessage, $pdf);
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        }
-    }
-
-    public function paymentReceipt(Payment $payment): void
-    {
         $wa = $this->settings->whatsapp();
         if (! ($wa['notify_payment'] ?? true)) {
             return;
@@ -165,8 +184,10 @@ class NotificationDispatchService
         $message = "StudyPoint: Payment of ₹{$payment->amount} received. Receipt: {$payment->payment_code}.";
 
         if ($prefs['email']) {
-            $this->dispatchEmailToContact(
-                $student?->email ?? $admission?->email,
+            $studentEmail = $student?->email ?? $admission?->email;
+            $this->sendEmailToStudentAndEmergency(
+                $studentEmail,
+                $admission?->emergency_email,
                 'StudyPoint — Payment Receipt',
                 $message,
                 [
@@ -185,6 +206,8 @@ class NotificationDispatchService
                     'cta_label' => 'View portal',
                     'cta_url' => $this->frontendUrl('/login'),
                 ],
+                [],
+                $this->parentEmailNotificationsEnabled() && ($admission?->notify_parent_email ?? false),
             );
         }
 
@@ -252,11 +275,11 @@ class NotificationDispatchService
         $pdf = $this->invoicePdf->build($invoice);
         $message = "StudyPoint: Please find your invoice {$invoice->invoice_code} attached as a PDF.\n\nTotal: ₹{$invoice->total}.";
 
-        $this->mailer->send(
+        $this->sendEmailToStudentAndEmergency(
             $student->email,
+            $student->admission?->emergency_email,
             'Invoice '.$invoice->invoice_code.' — StudyPoint',
             $message,
-            null,
             [
                 'title' => 'Your invoice is ready',
                 'eyebrow' => 'Invoice',
@@ -273,6 +296,7 @@ class NotificationDispatchService
                 'cta_url' => $this->frontendUrl('/login'),
             ],
             [$pdf],
+            $this->parentEmailNotificationsEnabled() && ($student->admission?->notify_parent_email ?? false),
         );
     }
 
@@ -466,16 +490,90 @@ class NotificationDispatchService
         string $emailSubject,
         string $emailBody,
         array $emailTemplate = [],
+        array $attachments = [],
     ): void {
         if (! $email) {
             return;
         }
 
         try {
-            $this->mailer->send($email, $emailSubject, $emailBody, null, $emailTemplate);
+            $this->mailer->send($email, $emailSubject, $emailBody, null, $emailTemplate, $attachments);
         } catch (\Throwable) {
             // non-blocking
         }
+    }
+
+    /**
+     * @param  array<int, array{content: string, filename?: string, name?: string, mime?: string}>  $attachments
+     */
+    private function sendEmailToStudentAndEmergency(
+        ?string $studentEmail,
+        ?string $emergencyEmail,
+        string $subject,
+        string $body,
+        array $template = [],
+        array $attachments = [],
+        bool $sendEmergency = true,
+    ): void {
+        if ($studentEmail) {
+            $this->dispatchEmailToContact($studentEmail, $subject, $body, $template, $attachments);
+        }
+
+        if ($sendEmergency && $emergencyEmail && $emergencyEmail !== $studentEmail) {
+            $this->dispatchEmailToContact($emergencyEmail, $subject, $body, $template, $attachments);
+        }
+    }
+
+    private function parentEmailNotificationsEnabled(): bool
+    {
+        return (bool) ($this->settings->mail()['notify_parent_email'] ?? true);
+    }
+
+    public function attendanceAlert(Student $student, AttendanceLog $log): void
+    {
+        if (! $this->mailer->isConfigured()) {
+            return;
+        }
+
+        $student->loadMissing('admission');
+        $admission = $student->admission;
+        $action = $log->check_out ? 'checked out' : 'checked in';
+        $timestamp = $log->check_in?->format('d M Y h:i A') ?? now()->format('d M Y h:i A');
+        $subject = "StudyPoint attendance update — {$student->name} {$action}";
+        $body = implode("\n", [
+            'Hello,',
+            '',
+            "Attendance has been recorded for {$student->name}.",
+            '',
+            "Status: {$action}",
+            "Time: {$timestamp}",
+        ]);
+
+        $template = [
+            'title' => 'Attendance update',
+            'eyebrow' => 'Attendance',
+            'paragraphs' => [
+                "Attendance has been recorded for {$student->name}.",
+                "This student was {$action} at {$timestamp}.",
+            ],
+            'details' => [
+                ['label' => 'Student', 'value' => $student->name],
+                ['label' => 'Action', 'value' => ucfirst($action)],
+                ['label' => 'Time', 'value' => $timestamp],
+            ],
+            'cta_label' => 'View portal',
+            'cta_url' => $this->frontendUrl('/login'),
+        ];
+
+        $this->sendEmailToStudentAndEmergency(
+            $student->email,
+            $admission?->emergency_email,
+            $subject,
+            $body,
+            $template,
+            [],
+            $this->parentEmailNotificationsEnabled() && ($admission?->notify_parent_email ?? false),
+        );
     }
 
     /**

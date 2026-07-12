@@ -256,23 +256,64 @@ class WhatsAppDispatchService
 
     public function queueAttendanceAlert(Student $student, AttendanceLog $log): ?WhatsAppMessage
     {
-        if (! $student->phone) {
-            return null;
-        }
-
+        $student->loadMissing('admission');
         $config = $this->settings->whatsapp();
-        if (! ($config['notify_attendance'] ?? true)) {
+
+        if (! ($config['notify_attendance'] ?? true) || ! $this->canSend()) {
             return null;
         }
 
         $template = trim((string) ($config['template_attendance'] ?? ''));
         $action = $log->check_out ? 'checked out' : 'checked in';
         $timestamp = $log->check_in?->format('d M Y h:i A') ?? now()->format('d M Y h:i A');
-        $fallback = "StudyPoint attendance update: You were {$action} at {$timestamp}.";
+        $studentFallback = "StudyPoint attendance update: You were {$action} at {$timestamp}.";
+        $parentFallback = "StudyPoint attendance update: {$student->name} was {$action} at {$timestamp}.";
 
-        if ($template !== '' && ($config['provider'] ?? '') === 'meta_cloud') {
-            return $this->queueTemplate(
+        $messages = [];
+
+        if ($student->phone) {
+            $messages[] = $this->queueAttendanceMessage(
                 $student->phone,
+                $template,
+                $studentFallback,
+                $student,
+                $log,
+                $action,
+                $timestamp,
+                $config['provider'] ?? '',
+            );
+        }
+
+        $parentPhone = $student->admission?->emergency_phone;
+        if ($parentPhone && $parentPhone !== $student->phone && $student->admission?->notify_parent_whatsapp && ($this->settings->whatsapp()['notify_parent_whatsapp'] ?? true)) {
+            $messages[] = $this->queueAttendanceMessage(
+                $parentPhone,
+                $template,
+                $parentFallback,
+                $student,
+                $log,
+                $action,
+                $timestamp,
+                $config['provider'] ?? '',
+            );
+        }
+
+        return $messages[0] ?? null;
+    }
+
+    private function queueAttendanceMessage(
+        string $phone,
+        string $template,
+        string $fallback,
+        Student $student,
+        AttendanceLog $log,
+        string $action,
+        string $timestamp,
+        string $provider,
+    ): ?WhatsAppMessage {
+        if ($template !== '' && $provider === 'meta_cloud') {
+            return $this->queueTemplate(
+                $phone,
                 $template,
                 [
                     (string) $student->name,
@@ -284,7 +325,7 @@ class WhatsAppDispatchService
             );
         }
 
-        return $this->queueText($student->phone, $fallback, $log);
+        return $this->queueText($phone, $fallback, $log);
     }
 
     private function canSend(): bool
