@@ -39,7 +39,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('subscriptions:sync-status')->daily();
         $schedule->command('whatsapp:send-reminders')->daily();
         $schedule->command('biometric:sync-logs')->everyFiveMinutes();
-        SoftKattaLicensingServiceProvider::schedule($schedule);
+
+        // Avoid hard-failing artisan when path package autoload is stale/missing.
+        if (class_exists(SoftKattaLicensingServiceProvider::class)) {
+            SoftKattaLicensingServiceProvider::schedule($schedule);
+        }
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
