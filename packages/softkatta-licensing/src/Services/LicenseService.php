@@ -82,6 +82,7 @@ class LicenseService
     /**
      * True when SoftKatta has already rejected this install (suspend/revoke/etc.).
      * Public pages must also stop — do not wait for cache expiry.
+     * Remotely recoverable codes (suspended) still block until the next successful online check.
      */
     public function isHardBlocked(): bool
     {
@@ -89,7 +90,14 @@ class LicenseService
             return false;
         }
 
-        return LicenseErrorCode::isHardFailure($this->state()->last_error_code);
+        $code = $this->state()->last_error_code;
+        if (! LicenseErrorCode::isHardFailure($code)) {
+            return false;
+        }
+
+        // Token-dead failures stay blocked until manual/CLI re-activate.
+        // Suspend/disable stay blocked for public traffic, but verify/heartbeat may recover online.
+        return true;
     }
 
     /**
@@ -112,11 +120,14 @@ class LicenseService
         }
 
         if (LicenseErrorCode::isHardFailure($state->last_error_code) && ! $force) {
-            return [
-                'ok' => false,
-                'error_code' => $state->last_error_code,
-                'message' => 'License access is blocked. Contact SoftKatta support or re-activate after the license is restored.',
-            ];
+            // Suspend/disable can be cleared by SoftKatta Admin Activate — always re-check online.
+            if (! LicenseErrorCode::isRemotelyRecoverable($state->last_error_code)) {
+                return [
+                    'ok' => false,
+                    'error_code' => $state->last_error_code,
+                    'message' => 'License access is blocked. Contact SoftKatta support or re-activate after the license is restored.',
+                ];
+            }
         }
 
         $intervalHours = (int) config('softkatta.verify_interval_hours', 1);

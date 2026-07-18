@@ -29,8 +29,17 @@ class EnsureLicenseValid
         }
 
         // After SoftKatta suspend/revoke, block public marketing APIs too.
+        // Remotely recoverable blocks (suspend) re-check SoftKatta so Admin Activate restores automatically.
         if ($this->license->isHardBlocked()) {
             $code = $this->license->state()->last_error_code ?: LicenseErrorCode::INVALID_LICENSE;
+
+            if (LicenseErrorCode::isRemotelyRecoverable($code)) {
+                $result = $this->license->verify(true);
+                if ($result['ok'] ?? false) {
+                    return $next($request);
+                }
+                $code = $result['error_code'] ?? $code;
+            }
 
             return response()->json([
                 'success' => false,

@@ -50,6 +50,30 @@ final class LicenseErrorCode
         return in_array($code, self::hardFailures(), true);
     }
 
+    /**
+     * SoftKatta can clear these remotely (Suspend → Activate) without a new install token.
+     *
+     * @return list<string>
+     */
+    public static function remotelyRecoverableFailures(): array
+    {
+        return [
+            self::SUSPENDED_LICENSE,
+            self::PRODUCT_DISABLED,
+            self::EXPIRED_SUBSCRIPTION,
+            self::INVALID_LICENSE,
+        ];
+    }
+
+    public static function isRemotelyRecoverable(?string $code): bool
+    {
+        if ($code === null || $code === '') {
+            return false;
+        }
+
+        return in_array($code, self::remotelyRecoverableFailures(), true);
+    }
+
     public static function frontendPath(string $code): string
     {
         return match ($code) {
