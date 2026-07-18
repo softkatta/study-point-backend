@@ -41,6 +41,14 @@ class EnsureLicenseValid
                 $code = $result['error_code'] ?? $code;
             }
 
+            if ($code === LicenseErrorCode::INVALID_INSTALL_TOKEN) {
+                $reactivated = $this->license->attemptAutoReactivate();
+                if ($reactivated['ok'] ?? false) {
+                    return $next($request);
+                }
+                $code = $reactivated['error_code'] ?? $code;
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'License access is blocked.',
@@ -51,18 +59,24 @@ class EnsureLicenseValid
             ], 403);
         }
 
+        // Public marketing GETs still require a live SoftKatta check (short cache) so Suspend stops the site.
+        $isPublicGet = false;
         if ($request->isMethod('get')) {
             foreach ((array) config('softkatta.license_public_get_paths', []) as $pattern) {
                 if ($request->is($pattern)) {
-                    return $next($request);
+                    $isPublicGet = true;
+                    break;
                 }
             }
         }
 
-        $force = $request->is('api/v1/auth/login') || $request->is('api/v1/license/verify');
+        $force = $request->is('api/v1/auth/login')
+            || $request->is('api/v1/license/verify')
+            || (bool) $request->bearerToken()
+            || $request->is('api/v1/auth/*');
+
         $needsCheck = $force
-            || $request->bearerToken()
-            || $request->is('api/v1/auth/*')
+            || $isPublicGet
             || $request->isMethod('post')
             || $request->isMethod('put')
             || $request->isMethod('patch')
@@ -81,6 +95,7 @@ class EnsureLicenseValid
             ], 403);
         }
 
+        // Authenticated / login always online; public uses short cache (verify_interval_minutes).
         $result = $this->license->verify($force);
 
         if (! ($result['ok'] ?? false)) {

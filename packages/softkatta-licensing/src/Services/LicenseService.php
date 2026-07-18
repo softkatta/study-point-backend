@@ -130,16 +130,18 @@ class LicenseService
             }
         }
 
-        $intervalHours = (int) config('softkatta.verify_interval_hours', 1);
+        // 0 = always hit SoftKatta (fast Suspend). Default 1 minute for public traffic.
+        $intervalMinutes = (int) config('softkatta.verify_interval_minutes', 1);
         $version = (string) config('softkatta.product_version');
         $versionChanged = $state->product_version_at_verify && $state->product_version_at_verify !== $version;
 
         if (
             ! $force
+            && $intervalMinutes > 0
             && ! $versionChanged
             && $state->last_verified_at
             && $state->last_error_code === null
-            && $state->last_verified_at->gt(now()->subHours(max(0, $intervalHours)))
+            && $state->last_verified_at->gt(now()->subMinutes($intervalMinutes))
         ) {
             return [
                 'ok' => true,
@@ -257,14 +259,10 @@ class LicenseService
         }
 
         // Admin Activate after token revoke: SoftKatta is active again — mint new install tokens automatically.
+        // Only retry activate when the token is dead — not while SoftKatta still reports SUSPENDED.
         if (
             filled($state->license_key)
-            && in_array($result['error_code'] ?? '', [
-                LicenseErrorCode::INVALID_INSTALL_TOKEN,
-                LicenseErrorCode::SUSPENDED_LICENSE,
-                LicenseErrorCode::PRODUCT_DISABLED,
-                LicenseErrorCode::INVALID_LICENSE,
-            ], true)
+            && ($result['error_code'] ?? '') === LicenseErrorCode::INVALID_INSTALL_TOKEN
         ) {
             $reactivated = $this->attemptAutoReactivate($state);
             if ($reactivated['ok'] ?? false) {
@@ -285,7 +283,6 @@ class LicenseService
                 return $reactivated;
             }
 
-            // Still suspended / revoked — keep the SoftKatta error, not only INVALID_INSTALL_TOKEN.
             return $this->recordHardFailure($state, $reactivated);
         }
 
