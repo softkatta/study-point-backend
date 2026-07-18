@@ -80,6 +80,19 @@ class LicenseService
     }
 
     /**
+     * True when SoftKatta has already rejected this install (suspend/revoke/etc.).
+     * Public pages must also stop — do not wait for cache expiry.
+     */
+    public function isHardBlocked(): bool
+    {
+        if (! $this->isLicensingEnabled()) {
+            return false;
+        }
+
+        return LicenseErrorCode::isHardFailure($this->state()->last_error_code);
+    }
+
+    /**
      * @return array{ok: bool, error_code?: string, message?: string, data?: mixed, from_cache?: bool}
      */
     public function verify(bool $force = false): array
@@ -98,7 +111,15 @@ class LicenseService
             ];
         }
 
-        $intervalHours = (int) config('softkatta.verify_interval_hours', 24);
+        if (LicenseErrorCode::isHardFailure($state->last_error_code) && ! $force) {
+            return [
+                'ok' => false,
+                'error_code' => $state->last_error_code,
+                'message' => 'License access is blocked. Contact SoftKatta support or re-activate after the license is restored.',
+            ];
+        }
+
+        $intervalHours = (int) config('softkatta.verify_interval_hours', 1);
         $version = (string) config('softkatta.product_version');
         $versionChanged = $state->product_version_at_verify && $state->product_version_at_verify !== $version;
 
@@ -106,7 +127,8 @@ class LicenseService
             ! $force
             && ! $versionChanged
             && $state->last_verified_at
-            && $state->last_verified_at->gt(now()->subHours($intervalHours))
+            && $state->last_error_code === null
+            && $state->last_verified_at->gt(now()->subHours(max(0, $intervalHours)))
         ) {
             return [
                 'ok' => true,
@@ -130,13 +152,13 @@ class LicenseService
             if ($refreshed['ok'] ?? false) {
                 $state = $this->state();
                 $result = $this->client->verify($state->install_token, $state->installation_id);
+            } elseif (LicenseErrorCode::isHardFailure($refreshed['error_code'] ?? null)) {
+                return $this->recordHardFailure($state, $refreshed);
             }
         }
 
         if (! ($result['ok'] ?? false)) {
-            $state->forceFill(['last_error_code' => $result['error_code'] ?? LicenseErrorCode::INVALID_LICENSE])->save();
-
-            return $result;
+            return $this->recordHardFailure($state, $result);
         }
 
         $data = $result['data'] ?? [];
@@ -210,9 +232,12 @@ class LicenseService
                 'limits_cache' => $data['limits'] ?? $state->limits_cache,
                 'last_error_code' => null,
             ])->save();
+
+            return $result;
         }
 
-        return $result;
+        // Suspend / revoke / invalid token must kill local OK-cache immediately.
+        return $this->recordHardFailure($state, $result);
     }
 
     public function syncModules(): array
@@ -316,7 +341,16 @@ class LicenseService
 
     private function allowOfflineGrace(LicenseState $state, string $message): array
     {
-        $graceDays = (int) config('softkatta.offline_grace_days', 5);
+        // Never use offline grace after SoftKatta already blocked this license.
+        if (LicenseErrorCode::isHardFailure($state->last_error_code)) {
+            return [
+                'ok' => false,
+                'error_code' => $state->last_error_code,
+                'message' => 'License access is blocked.',
+            ];
+        }
+
+        $graceDays = (int) config('softkatta.offline_grace_days', 1);
 
         if (! $state->last_verified_at) {
             return [
@@ -326,7 +360,7 @@ class LicenseService
             ];
         }
 
-        if ($state->last_verified_at->lt(now()->subDays($graceDays))) {
+        if ($state->last_verified_at->lt(now()->subDays(max(0, $graceDays)))) {
             return [
                 'ok' => false,
                 'error_code' => LicenseErrorCode::GRACE_EXPIRED,
@@ -343,6 +377,34 @@ class LicenseService
                 'modules' => $state->modules_cache ?? [],
                 'limits' => $state->limits_cache ?? [],
             ],
+        ];
+    }
+
+    /**
+     * @param  array{ok?: bool, error_code?: string, message?: string, data?: mixed}  $result
+     * @return array{ok: bool, error_code: string, message: string, data?: mixed}
+     */
+    private function recordHardFailure(LicenseState $state, array $result): array
+    {
+        $code = $result['error_code'] ?? LicenseErrorCode::INVALID_LICENSE;
+        $message = $result['message'] ?? 'License verification failed.';
+
+        $payload = [
+            'last_error_code' => $code,
+        ];
+
+        if (LicenseErrorCode::isHardFailure($code)) {
+            // Drop positive cache so the next request cannot treat the license as OK.
+            $payload['last_verified_at'] = null;
+        }
+
+        $state->forceFill($payload)->save();
+
+        return [
+            'ok' => false,
+            'error_code' => $code,
+            'message' => $message,
+            'data' => $result['data'] ?? null,
         ];
     }
 }

@@ -7,6 +7,7 @@ final class LicenseErrorCode
     public const INVALID_LICENSE = 'INVALID_LICENSE';
     public const EXPIRED_SUBSCRIPTION = 'EXPIRED_SUBSCRIPTION';
     public const SUSPENDED_LICENSE = 'SUSPENDED_LICENSE';
+    public const REVOKED_LICENSE = 'REVOKED_LICENSE';
     public const DOMAIN_NOT_AUTHORIZED = 'DOMAIN_NOT_AUTHORIZED';
     public const PRODUCT_DISABLED = 'PRODUCT_DISABLED';
     public const UNSUPPORTED_VERSION = 'UNSUPPORTED_VERSION';
@@ -19,12 +20,43 @@ final class LicenseErrorCode
     public const NOT_INSTALLED = 'NOT_INSTALLED';
     public const COMPANY_API_UNAVAILABLE = 'COMPANY_API_UNAVAILABLE';
 
+    /**
+     * Errors that must stop the product immediately (no offline/cache bypass).
+     *
+     * @return list<string>
+     */
+    public static function hardFailures(): array
+    {
+        return [
+            self::INVALID_LICENSE,
+            self::EXPIRED_SUBSCRIPTION,
+            self::SUSPENDED_LICENSE,
+            self::REVOKED_LICENSE,
+            self::DOMAIN_NOT_AUTHORIZED,
+            self::PRODUCT_DISABLED,
+            self::UNSUPPORTED_VERSION,
+            self::SERVER_VERIFICATION_FAILED,
+            self::INVALID_INSTALL_TOKEN,
+            self::GRACE_EXPIRED,
+        ];
+    }
+
+    public static function isHardFailure(?string $code): bool
+    {
+        if ($code === null || $code === '') {
+            return false;
+        }
+
+        return in_array($code, self::hardFailures(), true);
+    }
+
     public static function frontendPath(string $code): string
     {
         return match ($code) {
             self::INVALID_LICENSE => '/license/invalid',
             self::EXPIRED_SUBSCRIPTION => '/license/expired',
             self::SUSPENDED_LICENSE => '/license/suspended',
+            self::REVOKED_LICENSE => '/license/invalid',
             self::DOMAIN_NOT_AUTHORIZED => '/license/domain-not-authorized',
             self::PRODUCT_DISABLED => '/license/product-disabled',
             self::UNSUPPORTED_VERSION => '/license/unsupported-version',

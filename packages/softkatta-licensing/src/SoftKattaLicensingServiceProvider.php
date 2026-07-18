@@ -52,8 +52,9 @@ class SoftKattaLicensingServiceProvider extends ServiceProvider
 
     public static function schedule(Schedule $schedule): void
     {
-        $schedule->command('license:verify')->daily();
-        $schedule->command('license:heartbeat')->hourly();
+        $schedule->command('license:verify')->hourly();
+        // Admin suspend must be noticed quickly — do not wait an hour.
+        $schedule->command('license:heartbeat')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('license:refresh-token')->weekly();
     }
 }

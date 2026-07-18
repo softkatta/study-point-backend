@@ -5,6 +5,7 @@ namespace SoftKatta\Licensing\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use SoftKatta\Licensing\Services\LicenseService;
+use SoftKatta\Licensing\Support\LicenseErrorCode;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureLicenseValid
@@ -25,6 +26,20 @@ class EnsureLicenseValid
 
         if (! $this->license->isInstalled()) {
             return $next($request);
+        }
+
+        // After SoftKatta suspend/revoke, block public marketing APIs too.
+        if ($this->license->isHardBlocked()) {
+            $code = $this->license->state()->last_error_code ?: LicenseErrorCode::INVALID_LICENSE;
+
+            return response()->json([
+                'success' => false,
+                'message' => 'License access is blocked.',
+                'error_code' => $code,
+                'data' => [
+                    'redirect' => LicenseErrorCode::frontendPath($code),
+                ],
+            ], 403);
         }
 
         if ($request->isMethod('get')) {
@@ -64,7 +79,9 @@ class EnsureLicenseValid
                 'success' => false,
                 'message' => $result['message'] ?? 'License verification failed.',
                 'error_code' => $result['error_code'] ?? 'INVALID_LICENSE',
-                'data' => null,
+                'data' => [
+                    'redirect' => LicenseErrorCode::frontendPath((string) ($result['error_code'] ?? LicenseErrorCode::INVALID_LICENSE)),
+                ],
             ], 403);
         }
 
