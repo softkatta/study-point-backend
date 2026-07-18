@@ -4,6 +4,7 @@ namespace SoftKatta\Licensing;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
+use SoftKatta\Licensing\Console\ActivateLicenseCommand;
 use SoftKatta\Licensing\Console\HeartbeatLicenseCommand;
 use SoftKatta\Licensing\Console\RefreshLicenseTokenCommand;
 use SoftKatta\Licensing\Console\VerifyLicenseCommand;
@@ -40,6 +41,7 @@ class SoftKattaLicensingServiceProvider extends ServiceProvider
                 VerifyLicenseCommand::class,
                 RefreshLicenseTokenCommand::class,
                 HeartbeatLicenseCommand::class,
+                ActivateLicenseCommand::class,
             ]);
         }
 

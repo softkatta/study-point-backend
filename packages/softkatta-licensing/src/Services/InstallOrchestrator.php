@@ -23,11 +23,15 @@ class InstallOrchestrator
         try {
             $installed = $this->license->isInstalled();
             $state = \SoftKatta\Licensing\Models\LicenseState::query()->first();
-            $hasLicense = filled($state?->install_token);
+            $hasToken = filled($state?->install_token);
+            $hardBlocked = \SoftKatta\Licensing\Support\LicenseErrorCode::isHardFailure($state?->last_error_code);
+            // After SoftKatta suspend, token may still exist locally but is dead — allow re-activation.
+            $hasLicense = $hasToken && ! $hardBlocked;
         } catch (\Throwable) {
             $installed = false;
             $state = null;
             $hasLicense = false;
+            $hardBlocked = false;
         }
 
         return [
@@ -37,6 +41,8 @@ class InstallOrchestrator
             'domain' => $this->fingerprint->currentDomain(),
             'fingerprint' => $this->fingerprint->generate(),
             'has_license' => $hasLicense,
+            'needs_reactivation' => $installed && ! $hasLicense,
+            'last_error_code' => $state?->last_error_code,
             'bound_domain' => $state?->bound_domain,
             'company_api_configured' => $this->isCompanyApiConfigured(),
             'company_api' => [
