@@ -60,6 +60,14 @@ class InstallOrchestrator
                 'offline_grace_days' => (int) config('softkatta.offline_grace_days'),
                 'verify_interval_hours' => (int) config('softkatta.verify_interval_hours'),
             ],
+            'database' => [
+                'host' => (string) config('database.connections.mysql.host', '127.0.0.1'),
+                'port' => (string) config('database.connections.mysql.port', '3306'),
+                'database' => (string) config('database.connections.mysql.database', ''),
+                'username' => (string) config('database.connections.mysql.username', ''),
+                // Never expose the password to the browser — operator re-enters it.
+                'password_set' => filled(config('database.connections.mysql.password')),
+            ],
             'configuration' => ($hasLicense && $state)
                 ? $this->license->configurationProfile()
                 : null,
