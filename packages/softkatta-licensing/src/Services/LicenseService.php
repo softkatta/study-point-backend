@@ -221,6 +221,15 @@ class LicenseService
     {
         $state = $this->state();
 
+        if ((! $state->install_token || ! $state->installation_id) && filled($state->license_key)) {
+            $reactivated = $this->attemptAutoReactivate($state);
+            if ($reactivated['ok'] ?? false) {
+                $state = $this->state();
+            } else {
+                return $reactivated;
+            }
+        }
+
         if (! $state->install_token || ! $state->installation_id) {
             return [
                 'ok' => false,
@@ -247,8 +256,61 @@ class LicenseService
             return $result;
         }
 
-        // Suspend / revoke / invalid token must kill local OK-cache immediately.
+        // Admin Activate after token revoke: SoftKatta is active again — mint new install tokens automatically.
+        if (
+            filled($state->license_key)
+            && in_array($result['error_code'] ?? '', [
+                LicenseErrorCode::INVALID_INSTALL_TOKEN,
+                LicenseErrorCode::SUSPENDED_LICENSE,
+                LicenseErrorCode::PRODUCT_DISABLED,
+                LicenseErrorCode::INVALID_LICENSE,
+            ], true)
+        ) {
+            $reactivated = $this->attemptAutoReactivate($state);
+            if ($reactivated['ok'] ?? false) {
+                $state = $this->state();
+                $retry = $this->client->heartbeat($state->install_token, $state->installation_id);
+                if ($retry['ok'] ?? false) {
+                    $data = $retry['data'] ?? [];
+                    $state->forceFill([
+                        'last_verified_at' => now(),
+                        'modules_cache' => $data['modules'] ?? $state->modules_cache,
+                        'limits_cache' => $data['limits'] ?? $state->limits_cache,
+                        'last_error_code' => null,
+                    ])->save();
+
+                    return $retry;
+                }
+
+                return $reactivated;
+            }
+
+            // Still suspended / revoked — keep the SoftKatta error, not only INVALID_INSTALL_TOKEN.
+            return $this->recordHardFailure($state, $reactivated);
+        }
+
         return $this->recordHardFailure($state, $result);
+    }
+
+    /**
+     * After SoftKatta Admin Activate, re-issue install tokens using the stored license key.
+     *
+     * @return array{ok: bool, error_code?: string, message?: string, data?: mixed}
+     */
+    public function attemptAutoReactivate(?LicenseState $state = null): array
+    {
+        $state ??= $this->state();
+        $key = trim((string) ($state->license_key ?? ''));
+
+        if ($key === '') {
+            return [
+                'ok' => false,
+                'error_code' => LicenseErrorCode::INVALID_INSTALL_TOKEN,
+                'message' => 'No stored license key available for automatic re-activation.',
+            ];
+        }
+
+        return $this->activate($key);
     }
 
     public function syncModules(): array
