@@ -4,7 +4,7 @@ return [
     'company_api_url' => rtrim(env('SOFTKATTA_COMPANY_API_URL', 'http://127.0.0.1:8090/api/v1/company'), '/'),
     'public_api_key' => env('SOFTKATTA_PUBLIC_API_KEY', ''),
     'api_secret' => env('SOFTKATTA_API_SECRET', ''),
-    'product_slug' => env('SOFTKATTA_PRODUCT_SLUG', ''),
+    'product_slug' => env('SOFTKATTA_PRODUCT_SLUG', 'study-point-management-software'),
     'product_version' => env('SOFTKATTA_PRODUCT_VERSION', env('APP_VERSION', '1.0.0')),
     'offline_grace_days' => (int) env('SOFTKATTA_OFFLINE_GRACE_DAYS', 1),
     // 0 = always re-check SoftKatta (recommended so Suspend takes effect quickly).

@@ -39,9 +39,9 @@ class InstallOrchestrator
 
         return [
             'installed' => $installed,
-            'product_slug' => config('softkatta.product_slug'),
+            'product_slug' => $this->resolveProductSlug(),
             'product_version' => config('softkatta.product_version'),
-            'domain' => $this->fingerprint->currentDomain(),
+            'domain' => $this->resolvePublicDomain(),
             'fingerprint' => $this->fingerprint->generate(),
             'has_license' => $hasLicense,
             'needs_reactivation' => $installed && ! $hasLicense,
@@ -53,7 +53,7 @@ class InstallOrchestrator
                 'company_api_url' => (string) config('softkatta.company_api_url'),
                 'public_api_key' => $this->maskSecret($publicKey),
                 'api_secret_set' => $secret !== '',
-                'product_slug' => (string) config('softkatta.product_slug'),
+                'product_slug' => $this->resolveProductSlug(),
                 'product_version' => (string) config('softkatta.product_version'),
                 'app_url' => (string) config('app.url'),
                 'require_https' => (bool) config('softkatta.require_https'),
@@ -65,6 +65,48 @@ class InstallOrchestrator
                 : null,
             'entitlements' => $installed ? $this->license->entitlements() : null,
         ];
+    }
+
+    /**
+     * Prefer APP_URL / fingerprint, then browser Origin (SPA on public host → API on localhost/API host).
+     */
+    private function resolvePublicDomain(): string
+    {
+        $domain = $this->fingerprint->currentDomain();
+        if ($domain !== '' && ! $this->isLoopbackHost($domain)) {
+            return $domain;
+        }
+
+        foreach (['Origin', 'Referer'] as $header) {
+            $value = (string) request()->headers->get($header);
+            if ($value === '') {
+                continue;
+            }
+            $host = parse_url($value, PHP_URL_HOST);
+            if (is_string($host) && $host !== '' && ! $this->isLoopbackHost($host)) {
+                return strtolower($host);
+            }
+        }
+
+        return $domain !== '' ? $domain : 'localhost';
+    }
+
+    private function resolveProductSlug(): string
+    {
+        $slug = trim((string) config('softkatta.product_slug'));
+        if ($slug !== '' && str_contains($slug, 'study-point')) {
+            return $slug;
+        }
+
+        return 'study-point-management-software';
+    }
+
+    private function isLoopbackHost(string $host): bool
+    {
+        $host = strtolower($host);
+
+        return in_array($host, ['localhost', '127.0.0.1', '::1'], true)
+            || str_ends_with($host, '.localhost');
     }
 
     public function requirements(): array

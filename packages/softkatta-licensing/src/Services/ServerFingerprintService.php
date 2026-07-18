@@ -28,21 +28,22 @@ class ServerFingerprintService
 
     public function currentDomain(): string
     {
-        // Prefer the live public hostname over APP_URL (often left as localhost after migrate/seed).
         $requestHost = (string) request()->getHost();
+        $appUrlHost = $this->hostFromAppUrl();
+
+        // 1) Non-loopback APP_URL wins — wizard writes the public site URL (not the API host).
+        if ($appUrlHost !== null && ! $this->isLoopbackHost($appUrlHost)) {
+            return strtolower($this->stripPort($appUrlHost));
+        }
+
+        // 2) Before APP_URL is fixed, use the live request host when it is public.
         if ($requestHost !== '' && ! $this->isLoopbackHost($requestHost)) {
             return strtolower($this->stripPort($requestHost));
         }
 
-        $configured = (string) config('app.url');
-        if ($configured !== '') {
-            $host = parse_url($configured, PHP_URL_HOST);
-            if (is_string($host) && $host !== '' && ! $this->isLoopbackHost($host)) {
-                return strtolower($this->stripPort($host));
-            }
-            if (is_string($host) && $host !== '') {
-                return strtolower($this->stripPort($host));
-            }
+        // 3) Fall back to whatever we have (often localhost right after migrate/seed).
+        if ($appUrlHost !== null && $appUrlHost !== '') {
+            return strtolower($this->stripPort($appUrlHost));
         }
 
         if ($requestHost !== '') {
@@ -50,6 +51,18 @@ class ServerFingerprintService
         }
 
         return 'localhost';
+    }
+
+    private function hostFromAppUrl(): ?string
+    {
+        $configured = (string) config('app.url');
+        if ($configured === '') {
+            return null;
+        }
+
+        $host = parse_url($configured, PHP_URL_HOST);
+
+        return is_string($host) && $host !== '' ? $host : null;
     }
 
     private function isLoopbackHost(string $host): bool

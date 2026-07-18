@@ -4,7 +4,7 @@ return [
     'company_api_url' => rtrim(env('SOFTKATTA_COMPANY_API_URL', ''), '/'),
     'public_api_key' => env('SOFTKATTA_PUBLIC_API_KEY', ''),
     'api_secret' => env('SOFTKATTA_API_SECRET', ''),
-    'product_slug' => env('SOFTKATTA_PRODUCT_SLUG', 'study-point'),
+    'product_slug' => env('SOFTKATTA_PRODUCT_SLUG', 'study-point-management-software'),
     'product_version' => env('SOFTKATTA_PRODUCT_VERSION', env('APP_VERSION', '1.0.0')),
     'offline_grace_days' => (int) env('SOFTKATTA_OFFLINE_GRACE_DAYS', 1),
     'verify_interval_hours' => (int) env('SOFTKATTA_VERIFY_INTERVAL_HOURS', 0),
