@@ -21,24 +21,29 @@ class LicenseService
 
   public function isInstalled(): bool
   {
-        $state = LicenseState::query()->first();
-        $hasToken = filled($state?->install_token);
+        try {
+            $state = LicenseState::query()->first();
+            $hasToken = filled($state?->install_token);
 
-        if (File::exists(storage_path('app/installed')) && ! $hasToken) {
-            // Stale lock from an incomplete install — allow wizard to resume.
-            File::delete(storage_path('app/installed'));
+            if (File::exists(storage_path('app/installed')) && ! $hasToken) {
+                // Stale lock from an incomplete install — allow wizard to resume.
+                File::delete(storage_path('app/installed'));
+            }
+
+            if (! $hasToken) {
+                return false;
+            }
+
+            if (File::exists(storage_path('app/installed'))) {
+                return true;
+            }
+
+            return $state !== null && $state->installed_at !== null;
+        } catch (\Throwable) {
+            // DB down: if the install lock file exists, treat as installed — never reopen the wizard.
+            return File::exists(storage_path('app/installed'));
         }
-
-        if (! $hasToken) {
-            return false;
-        }
-
-        if (File::exists(storage_path('app/installed'))) {
-            return true;
-        }
-
-        return $state !== null && $state->installed_at !== null;
-    }
+  }
 
     public function state(): LicenseState
     {

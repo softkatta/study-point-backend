@@ -20,6 +20,8 @@ class InstallOrchestrator
         $publicKey = (string) config('softkatta.public_api_key');
         $secret = (string) config('softkatta.api_secret');
 
+        $databaseUnavailable = false;
+
         try {
             $installed = $this->license->isInstalled();
             $state = \SoftKatta\Licensing\Models\LicenseState::query()->first();
@@ -28,10 +30,11 @@ class InstallOrchestrator
             // After SoftKatta suspend, token may still exist locally but is dead — allow re-activation.
             $hasLicense = $hasToken && ! $hardBlocked;
         } catch (\Throwable) {
-            $installed = false;
+            // DB unavailable: lock file means install already finished — never reopen the wizard.
+            $installed = File::exists(storage_path('app/installed'));
             $state = null;
             $hasLicense = false;
-            $hardBlocked = false;
+            $databaseUnavailable = $installed;
         }
 
         return [
@@ -42,7 +45,8 @@ class InstallOrchestrator
             'fingerprint' => $this->fingerprint->generate(),
             'has_license' => $hasLicense,
             'needs_reactivation' => $installed && ! $hasLicense,
-            'last_error_code' => $state?->last_error_code,
+            'last_error_code' => $databaseUnavailable ? 'DATABASE_UNAVAILABLE' : $state?->last_error_code,
+            'database_unavailable' => $databaseUnavailable,
             'bound_domain' => $state?->bound_domain,
             'company_api_configured' => $this->isCompanyApiConfigured(),
             'company_api' => [
@@ -140,22 +144,6 @@ class InstallOrchestrator
             'DB_USERNAME' => $username,
             'DB_PASSWORD' => $password,
         ]);
-
-        config([
-            'database.default' => 'mysql',
-            'database.connections.mysql.host' => $host,
-            'database.connections.mysql.port' => (string) $port,
-            'database.connections.mysql.database' => $database,
-            'database.connections.mysql.username' => $username,
-            'database.connections.mysql.password' => $password,
-        ]);
-
-        try {
-            \Illuminate\Support\Facades\DB::purge('mysql');
-            \Illuminate\Support\Facades\DB::reconnect('mysql');
-        } catch (\Throwable) {
-            // Next request will pick up .env after config:clear.
-        }
 
         Artisan::call('config:clear');
 
