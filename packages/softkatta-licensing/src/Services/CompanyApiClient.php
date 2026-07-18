@@ -14,10 +14,12 @@ class CompanyApiClient
 
     public function activate(string $licenseKey, ?string $installationId = null): array
     {
-        return $this->request('POST', '/activate', [
-            'license_key' => $licenseKey,
-            'installation_id' => $installationId,
-        ], includeInstallToken: false);
+        $body = ['license_key' => $licenseKey];
+        if (filled($installationId)) {
+            $body['installation_id'] = $installationId;
+        }
+
+        return $this->request('POST', '/activate', $body, includeInstallToken: false, installationId: $installationId);
     }
 
     public function verify(string $installToken, string $installationId): array
@@ -60,60 +62,41 @@ class CompanyApiClient
         ?string $installationId = null,
         bool $includeInstallToken = true,
     ): array {
-        $base = config('softkatta.company_api_url');
-        $publicKey = (string) config('softkatta.public_api_key');
-        $secret = (string) config('softkatta.api_secret');
+        $base = rtrim((string) config('softkatta.company_api_url'), '/');
+        $publicKey = trim((string) config('softkatta.public_api_key'));
+        $secret = $this->normalizeSecret((string) config('softkatta.api_secret'));
 
         if ($base === '') {
-            return [
-                'ok' => false,
-                'unavailable' => false,
-                'error_code' => 'COMPANY_API_NOT_CONFIGURED',
-                'message' => 'SoftKatta Company API URL is not configured.',
-                'data' => null,
-                'status' => 0,
-            ];
+            return $this->configError('SoftKatta Company API URL is not configured.');
         }
 
         if ($publicKey === '' || $secret === '') {
-            return [
-                'ok' => false,
-                'unavailable' => false,
-                'error_code' => 'COMPANY_API_NOT_CONFIGURED',
-                'message' => 'SoftKatta API credentials are not configured.',
-                'data' => null,
-                'status' => 0,
-            ];
+            return $this->configError('SoftKatta API credentials are not configured.');
         }
 
         if (
             config('softkatta.require_https')
             && ! app()->environment(['local', 'testing'])
-            && ! str_starts_with((string) $base, 'https://')
+            && ! str_starts_with($base, 'https://')
         ) {
-            return [
-                'ok' => false,
-                'unavailable' => false,
-                'error_code' => 'COMPANY_API_NOT_CONFIGURED',
-                'message' => 'Company API URL must use HTTPS in production.',
-                'data' => null,
-                'status' => 0,
-            ];
+            return $this->configError('Company API URL must use HTTPS in production.');
         }
 
-        $domain = $this->fingerprint->currentDomain();
+        $domain = $this->normalizeDomain($this->fingerprint->currentDomain());
         $fp = $this->fingerprint->generate();
-        $productSlug = (string) config('softkatta.product_slug');
-        $productVersion = (string) config('softkatta.product_version');
-        $installationId = $installationId ?? '';
+        $productSlug = trim((string) config('softkatta.product_slug'));
+        $productVersion = trim((string) config('softkatta.product_version'));
+        $installationId = (string) ($installationId ?? '');
         $timestamp = (string) time();
         $nonce = Str::random(32);
 
-        $url = $base.$path;
-        $parsedPath = parse_url($url, PHP_URL_PATH) ?: $path;
+        $endpoint = '/'.ltrim($path, '/');
+        $url = $base.$endpoint;
+        $parsedPath = $this->signingPath($base, $endpoint);
+
         $rawBody = in_array(strtoupper($method), ['GET', 'HEAD'], true)
             ? ''
-            : json_encode($body, JSON_UNESCAPED_SLASHES);
+            : (string) json_encode($body, JSON_UNESCAPED_SLASHES);
 
         $canonical = HmacSigner::canonicalString(
             $method,
@@ -125,7 +108,7 @@ class CompanyApiClient
             $productVersion,
             $installationId,
             $fp,
-            $rawBody ?: '',
+            $rawBody,
         );
 
         $signature = HmacSigner::sign($canonical, $secret);
@@ -149,10 +132,10 @@ class CompanyApiClient
         }
 
         try {
-            $pending = Http::withHeaders($headers)->timeout(20);
+            $pending = Http::withHeaders($headers)->timeout(20)->withBody($rawBody !== '' ? $rawBody : '{}', 'application/json');
             $response = match (strtoupper($method)) {
-                'GET' => $pending->get($url),
-                'POST' => $pending->withBody($rawBody ?: '{}', 'application/json')->post($url),
+                'GET' => Http::withHeaders($headers)->timeout(20)->get($url),
+                'POST' => $pending->send('POST', $url),
                 default => throw new RuntimeException('Unsupported method'),
             };
         } catch (ConnectionException $e) {
@@ -167,14 +150,78 @@ class CompanyApiClient
         }
 
         $json = $response->json() ?? [];
+        $errorCode = $json['error_code'] ?? ($response->successful() ? null : 'INVALID_LICENSE');
+        $message = $json['message'] ?? $response->body();
+
+        if ($errorCode === 'INVALID_SIGNATURE') {
+            $message = 'Invalid request signature. Re-copy the SoftKatta API Secret (Reveal) for product "'.$productSlug.'" from SoftKatta admin — public key and secret must be the matching pair. Company API URL must be https://api.softkatta.in/api/v1/company';
+        }
 
         return [
             'ok' => $response->successful() && ($json['success'] ?? false),
             'unavailable' => false,
-            'error_code' => $json['error_code'] ?? ($response->successful() ? null : 'INVALID_LICENSE'),
-            'message' => $json['message'] ?? $response->body(),
+            'error_code' => $errorCode,
+            'message' => $message,
             'data' => $json['data'] ?? null,
             'status' => $response->status(),
+        ];
+    }
+
+    /**
+     * Match SoftKatta Central CompanyApiAuthService path normalization.
+     */
+    private function signingPath(string $base, string $endpoint): string
+    {
+        $basePath = (string) (parse_url($base, PHP_URL_PATH) ?: '');
+        $path = rtrim($basePath, '/').'/'.ltrim($endpoint, '/');
+        $path = '/'.ltrim($path, '/');
+        $path = preg_replace('#/+#', '/', $path) ?: $path;
+
+        if (! str_starts_with($path, '/api/')) {
+            $path = '/api/'.ltrim($path, '/');
+        }
+
+        return $path;
+    }
+
+    /**
+     * Match SoftKatta Central LicenseKey::normalizeDomain for HMAC canonical string.
+     */
+    private function normalizeDomain(string $domain): string
+    {
+        $domain = strtolower(trim($domain));
+        $domain = preg_replace('#^https?://#', '', $domain) ?? $domain;
+        $domain = rtrim($domain, '/');
+        $host = explode('/', $domain)[0] ?: '';
+
+        if ($host !== '' && str_contains($host, ':') && ! str_starts_with($host, '[')) {
+            $host = explode(':', $host)[0];
+        }
+
+        return strtolower($host);
+    }
+
+    private function normalizeSecret(string $secret): string
+    {
+        $secret = trim($secret);
+        // Strip BOM / zero-width chars from copy-paste.
+        $secret = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $secret) ?? $secret;
+
+        return trim($secret);
+    }
+
+    /**
+     * @return array{ok: false, unavailable: false, error_code: string, message: string, data: null, status: int}
+     */
+    private function configError(string $message): array
+    {
+        return [
+            'ok' => false,
+            'unavailable' => false,
+            'error_code' => 'COMPANY_API_NOT_CONFIGURED',
+            'message' => $message,
+            'data' => null,
+            'status' => 0,
         ];
     }
 }
