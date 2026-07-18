@@ -20,7 +20,12 @@ class EnsureInstalled
             return $next($request);
         }
 
-        if ($request->is('api/v1/install/*') || $request->is('up')) {
+        // Install wizard + pre-install / post-install license restore activate.
+        if (
+            $request->is('api/v1/install/*')
+            || $request->is('api/v1/license/activate')
+            || $request->is('up')
+        ) {
             return $next($request);
         }
 

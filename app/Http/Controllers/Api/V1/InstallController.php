@@ -56,7 +56,8 @@ class InstallController extends Controller
             'app_url' => ['required', 'url', 'max:500'],
             'require_https' => ['nullable', 'boolean'],
             'offline_grace_days' => ['nullable', 'integer', 'min:1', 'max:90'],
-            'verify_interval_hours' => ['nullable', 'integer', 'min:1', 'max:168'],
+            // 0 = always re-check SoftKatta (maps to verify_interval_minutes).
+            'verify_interval_hours' => ['nullable', 'integer', 'min:0', 'max:168'],
         ]);
 
         try {

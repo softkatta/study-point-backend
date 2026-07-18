@@ -345,7 +345,11 @@ class InstallOrchestrator
         $appUrl = rtrim((string) ($data['app_url'] ?? config('app.url')), '/');
         $requireHttps = filter_var($data['require_https'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $offlineGraceDays = (int) ($data['offline_grace_days'] ?? config('softkatta.offline_grace_days', 5));
-        $verifyIntervalHours = (int) ($data['verify_interval_hours'] ?? config('softkatta.verify_interval_hours', 24));
+        $verifyIntervalHours = max(0, (int) ($data['verify_interval_hours'] ?? config('softkatta.verify_interval_hours', 0)));
+        // Runtime LicenseService caches by minutes; 0 hours => always re-check.
+        $verifyIntervalMinutes = $verifyIntervalHours === 0
+            ? 0
+            : max(1, $verifyIntervalHours * 60);
 
         if ($companyApiUrl === '' || ! filter_var($companyApiUrl, FILTER_VALIDATE_URL)) {
             throw new RuntimeException('A valid SoftKatta Company API URL is required.');
@@ -379,7 +383,8 @@ class InstallOrchestrator
             'SOFTKATTA_PRODUCT_SLUG' => $productSlug,
             'SOFTKATTA_PRODUCT_VERSION' => $productVersion,
             'SOFTKATTA_OFFLINE_GRACE_DAYS' => (string) max(1, $offlineGraceDays),
-            'SOFTKATTA_VERIFY_INTERVAL_HOURS' => (string) max(1, $verifyIntervalHours),
+            'SOFTKATTA_VERIFY_INTERVAL_HOURS' => (string) $verifyIntervalHours,
+            'SOFTKATTA_VERIFY_INTERVAL_MINUTES' => (string) $verifyIntervalMinutes,
             'SOFTKATTA_TIMESTAMP_SKEW' => (string) ((int) config('softkatta.timestamp_skew_seconds', 300)),
             'SOFTKATTA_REQUIRE_HTTPS' => $requireHttps ? 'true' : 'false',
         ]);
@@ -394,7 +399,8 @@ class InstallOrchestrator
             'softkatta.product_slug' => $productSlug,
             'softkatta.product_version' => $productVersion,
             'softkatta.offline_grace_days' => max(1, $offlineGraceDays),
-            'softkatta.verify_interval_hours' => max(1, $verifyIntervalHours),
+            'softkatta.verify_interval_hours' => $verifyIntervalHours,
+            'softkatta.verify_interval_minutes' => $verifyIntervalMinutes,
             'softkatta.require_https' => $requireHttps,
         ]);
 
