@@ -64,8 +64,26 @@ class CompanyApiClient
         $publicKey = (string) config('softkatta.public_api_key');
         $secret = (string) config('softkatta.api_secret');
 
+        if ($base === '') {
+            return [
+                'ok' => false,
+                'unavailable' => false,
+                'error_code' => 'COMPANY_API_NOT_CONFIGURED',
+                'message' => 'SoftKatta Company API URL is not configured.',
+                'data' => null,
+                'status' => 0,
+            ];
+        }
+
         if ($publicKey === '' || $secret === '') {
-            throw new RuntimeException('SoftKatta API credentials are not configured.');
+            return [
+                'ok' => false,
+                'unavailable' => false,
+                'error_code' => 'COMPANY_API_NOT_CONFIGURED',
+                'message' => 'SoftKatta API credentials are not configured.',
+                'data' => null,
+                'status' => 0,
+            ];
         }
 
         if (
@@ -73,7 +91,14 @@ class CompanyApiClient
             && ! app()->environment(['local', 'testing'])
             && ! str_starts_with((string) $base, 'https://')
         ) {
-            throw new RuntimeException('Company API URL must use HTTPS in production.');
+            return [
+                'ok' => false,
+                'unavailable' => false,
+                'error_code' => 'COMPANY_API_NOT_CONFIGURED',
+                'message' => 'Company API URL must use HTTPS in production.',
+                'data' => null,
+                'status' => 0,
+            ];
         }
 
         $domain = $this->fingerprint->currentDomain();

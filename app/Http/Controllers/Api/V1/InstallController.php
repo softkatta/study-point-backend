@@ -76,7 +76,11 @@ class InstallController extends Controller
             'password' => ['required', 'string', 'min:8'],
         ]);
 
-        $user = $this->install->createAdmin($data);
+        try {
+            $user = $this->install->createAdmin($data);
+        } catch (\Throwable $e) {
+            return ApiResponse::error($e->getMessage(), 422);
+        }
 
         return ApiResponse::success([
             'id' => $user->id,
@@ -100,7 +104,16 @@ class InstallController extends Controller
             'license_key' => ['required', 'string', 'max:255'],
         ]);
 
-        $result = $this->license->activate($data['license_key']);
+        try {
+            $result = $this->license->activate($data['license_key']);
+        } catch (\Throwable $e) {
+            return ApiResponse::error(
+                $e->getMessage() ?: 'License activation failed.',
+                422,
+                null,
+                'ACTIVATION_FAILED',
+            );
+        }
 
         if (! ($result['ok'] ?? false)) {
             return ApiResponse::error(

@@ -135,6 +135,22 @@ class InstallOrchestrator
             'DB_PASSWORD' => $password,
         ]);
 
+        config([
+            'database.default' => 'mysql',
+            'database.connections.mysql.host' => $host,
+            'database.connections.mysql.port' => (string) $port,
+            'database.connections.mysql.database' => $database,
+            'database.connections.mysql.username' => $username,
+            'database.connections.mysql.password' => $password,
+        ]);
+
+        try {
+            \Illuminate\Support\Facades\DB::purge('mysql');
+            \Illuminate\Support\Facades\DB::reconnect('mysql');
+        } catch (\Throwable) {
+            // Next request will pick up .env after config:clear.
+        }
+
         Artisan::call('config:clear');
 
         return ['connected' => true, 'database' => $database];
