@@ -3,6 +3,8 @@
 namespace App\Services\SoftKatta;
 
 use App\Models\User;
+use Database\Seeders\PermissionSeeder;
+use Illuminate\Support\Facades\Artisan;
 use SoftKatta\Licensing\Services\InstallOrchestrator;
 
 /**
@@ -30,6 +32,16 @@ class InstallService
         return $this->orchestrator->configureDatabase($data);
     }
 
+    public function configureCompanyApi(array $data): array
+    {
+        return $this->orchestrator->configureCompanyApi($data);
+    }
+
+    public function isCompanyApiConfigured(): bool
+    {
+        return $this->orchestrator->isCompanyApiConfigured();
+    }
+
     public function createAdmin(array $data): User
     {
         /** @var User $user */
@@ -40,7 +52,18 @@ class InstallService
 
     public function migrate(): array
     {
-        return $this->orchestrator->migrate();
+        $result = $this->orchestrator->migrate();
+
+        // Roles/permissions only — never seed a super admin user.
+        Artisan::call('db:seed', [
+            '--class' => PermissionSeeder::class,
+            '--force' => true,
+        ]);
+
+        $result['permissions_seeded'] = true;
+        $result['permissions_output'] = Artisan::output();
+
+        return $result;
     }
 
     public function downloadConfiguration(): array

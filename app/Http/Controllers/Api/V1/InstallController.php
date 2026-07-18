@@ -45,6 +45,29 @@ class InstallController extends Controller
         return ApiResponse::success($result, 'Database configured.');
     }
 
+    public function companyApi(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'company_api_url' => ['required', 'url', 'max:500'],
+            'public_api_key' => ['nullable', 'string', 'max:500'],
+            'api_secret' => ['nullable', 'string', 'max:500'],
+            'product_slug' => ['required', 'string', 'max:100'],
+            'product_version' => ['nullable', 'string', 'max:50'],
+            'app_url' => ['required', 'url', 'max:500'],
+            'require_https' => ['nullable', 'boolean'],
+            'offline_grace_days' => ['nullable', 'integer', 'min:1', 'max:90'],
+            'verify_interval_hours' => ['nullable', 'integer', 'min:1', 'max:168'],
+        ]);
+
+        try {
+            $result = $this->install->configureCompanyApi($data);
+        } catch (\Throwable $e) {
+            return ApiResponse::error($e->getMessage(), 422);
+        }
+
+        return ApiResponse::success($result, 'SoftKatta Company API configured.');
+    }
+
     public function admin(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -64,6 +87,15 @@ class InstallController extends Controller
 
     public function activate(Request $request): JsonResponse
     {
+        if (! $this->install->isCompanyApiConfigured()) {
+            return ApiResponse::error(
+                'Configure SoftKatta Company API in the install wizard before activating a license.',
+                422,
+                null,
+                'COMPANY_API_NOT_CONFIGURED',
+            );
+        }
+
         $data = $request->validate([
             'license_key' => ['required', 'string', 'max:255'],
         ]);

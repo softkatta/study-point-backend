@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'company_api_url' => rtrim(env('SOFTKATTA_COMPANY_API_URL', 'http://127.0.0.1:8090/api/v1/company'), '/'),
+    'company_api_url' => rtrim(env('SOFTKATTA_COMPANY_API_URL', ''), '/'),
     'public_api_key' => env('SOFTKATTA_PUBLIC_API_KEY', ''),
     'api_secret' => env('SOFTKATTA_API_SECRET', ''),
     'product_slug' => env('SOFTKATTA_PRODUCT_SLUG', 'study-point'),

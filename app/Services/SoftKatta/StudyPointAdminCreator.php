@@ -2,10 +2,13 @@
 
 namespace App\Services\SoftKatta;
 
+use App\Models\Role;
 use App\Models\User;
+use App\Support\Permissions;
+use App\Support\Roles;
 use Illuminate\Support\Facades\Hash;
 use SoftKatta\Licensing\Contracts\CreatesAdminUser;
-use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class StudyPointAdminCreator implements CreatesAdminUser
 {
@@ -22,10 +25,17 @@ class StudyPointAdminCreator implements CreatesAdminUser
         );
 
         if (class_exists(Role::class)) {
-            Role::findOrCreate('super_admin', 'web');
-            if (method_exists($user, 'assignRole')) {
-                $user->assignRole('super_admin');
+            $role = Role::findOrCreate(Roles::SUPER_ADMIN, 'web');
+            $all = Permissions::ALL;
+            if ($all !== []) {
+                $role->syncPermissions($all);
             }
+            if (method_exists($user, 'syncRoles')) {
+                $user->syncRoles([Roles::SUPER_ADMIN]);
+            } elseif (method_exists($user, 'assignRole')) {
+                $user->assignRole(Roles::SUPER_ADMIN);
+            }
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
         }
 
         return $user;

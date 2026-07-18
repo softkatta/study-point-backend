@@ -42,6 +42,7 @@ Route::prefix('v1')->group(function () {
         Route::get('status', [InstallController::class, 'status']);
         Route::get('requirements', [InstallController::class, 'requirements']);
         Route::post('database', [InstallController::class, 'database']);
+        Route::post('company-api', [InstallController::class, 'companyApi']);
         Route::post('admin', [InstallController::class, 'admin']);
         Route::post('activate', [InstallController::class, 'activate']);
         Route::get('configuration', [InstallController::class, 'downloadConfiguration']);

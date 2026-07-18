@@ -49,20 +49,10 @@ app/
 └── Support/         # ApiResponse helper
 ```
 
-## Initial Login (after seed)
+## Initial Login
 
-The seeder creates **roles, super admin, starter branches, plans, facilities, FAQs and testimonials**. Staff users and live admissions must still be added from the admin panel.
+Super admin is **not** created by `db:seed`. Create it during the SoftKatta **install wizard** (`/install`) with the name, email, and password you choose.
 
-Default credentials (override via `.env`):
-
-- `admin@studypoint.in` / value of `SEED_SUPER_ADMIN_PASSWORD` (super_admin)
-
-```
-SEED_SUPER_ADMIN_EMAIL=admin@studypoint.in
-SEED_SUPER_ADMIN_NAME=Super Admin
-SEED_SUPER_ADMIN_PASSWORD=change-me-before-seeding
-```
-
-Re-running `php artisan db:seed` updates the super admin name/status but **does not reset the password**.
+`php artisan migrate:fresh --seed` only seeds roles/permissions and demo catalog data (branches, plans, etc.).
 
 See `../docs/api.md` for full API documentation.

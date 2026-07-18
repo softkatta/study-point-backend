@@ -9,7 +9,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call(PermissionSeeder::class);
-        $this->call(SuperAdminSeeder::class);
+        // Super admin is created only via the SoftKatta install wizard — never seeded.
         $this->call(BranchSeeder::class);
         $this->call(PlanSeeder::class);
         $this->call(FacilitySeeder::class);
