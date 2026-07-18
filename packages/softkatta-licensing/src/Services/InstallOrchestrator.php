@@ -93,12 +93,27 @@ class InstallOrchestrator
 
     private function resolveProductSlug(): string
     {
+        $canonical = 'study-point-management-software';
         $slug = trim((string) config('softkatta.product_slug'));
+
         if ($slug !== '' && str_contains($slug, 'study-point')) {
             return $slug;
         }
 
-        return 'study-point-management-software';
+        // Heal leftover .env values from other SoftKatta products (e.g. kindergarten).
+        if ($slug !== $canonical) {
+            try {
+                $this->writeEnv(['SOFTKATTA_PRODUCT_SLUG' => $canonical]);
+                config(['softkatta.product_slug' => $canonical]);
+                if (function_exists('opcache_invalidate')) {
+                    @opcache_invalidate(base_path('.env'), true);
+                }
+            } catch (\Throwable) {
+                // Read-only FS: still return the correct slug for this install response.
+            }
+        }
+
+        return $canonical;
     }
 
     private function isLoopbackHost(string $host): bool
@@ -202,6 +217,9 @@ class InstallOrchestrator
         $publicApiKey = trim((string) ($data['public_api_key'] ?? ''));
         $apiSecret = trim((string) ($data['api_secret'] ?? ''));
         $productSlug = trim((string) ($data['product_slug'] ?? ''));
+        if ($productSlug === '' || ! str_contains($productSlug, 'study-point')) {
+            $productSlug = 'study-point-management-software';
+        }
         $productVersion = trim((string) ($data['product_version'] ?? '1.0.0')) ?: '1.0.0';
         $appUrl = rtrim((string) ($data['app_url'] ?? config('app.url')), '/');
         $requireHttps = filter_var($data['require_https'] ?? false, FILTER_VALIDATE_BOOLEAN);
