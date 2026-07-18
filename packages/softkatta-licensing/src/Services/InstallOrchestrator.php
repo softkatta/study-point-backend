@@ -185,26 +185,62 @@ class InstallOrchestrator
 
     public function configureDatabase(array $data): array
     {
-        $host = $data['host'] ?? '127.0.0.1';
-        $port = $data['port'] ?? '3306';
-        $database = $data['database'] ?? '';
-        $username = $data['username'] ?? '';
-        $password = $data['password'] ?? '';
+        $host = trim((string) ($data['host'] ?? '127.0.0.1'));
+        $port = trim((string) ($data['port'] ?? '3306')) ?: '3306';
+        $database = trim((string) ($data['database'] ?? ''));
+        $username = trim((string) ($data['username'] ?? ''));
+        // Do not trim interior spaces — only strip accidental copy/paste newlines.
+        $password = preg_replace("/[\r\n]+/", '', (string) ($data['password'] ?? '')) ?? '';
 
-        try {
-            $dsn = "mysql:host={$host};port={$port};charset=utf8mb4";
-            $pdo = new PDO($dsn, $username, $password, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            ]);
-            $pdo->exec('CREATE DATABASE IF NOT EXISTS `'.str_replace('`', '``', $database).'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-        } catch (\Throwable $e) {
-            throw new RuntimeException('Database connection failed: '.$e->getMessage());
+        if ($database === '' || $username === '') {
+            throw new RuntimeException('Database name and username are required.');
+        }
+
+        // Hostinger shared hosting: DB already exists in hPanel — never CREATE DATABASE.
+        // Also try localhost <-> 127.0.0.1 (MySQL treats them as different account hosts).
+        $hostsToTry = array_values(array_unique(array_filter([
+            $host,
+            $host === '127.0.0.1' ? 'localhost' : null,
+            $host === 'localhost' ? '127.0.0.1' : null,
+        ])));
+
+        $lastError = null;
+        $connectedHost = $host;
+
+        foreach ($hostsToTry as $tryHost) {
+            try {
+                $dsn = "mysql:host={$tryHost};port={$port};dbname={$database};charset=utf8mb4";
+                $pdo = new PDO($dsn, $username, $password, [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_TIMEOUT => 8,
+                ]);
+                $pdo->query('SELECT 1');
+                $connectedHost = $tryHost;
+                $lastError = null;
+                break;
+            } catch (\Throwable $e) {
+                $lastError = $e;
+            }
+        }
+
+        if ($lastError !== null) {
+            $message = $lastError->getMessage();
+            if (str_contains($message, '1045') || str_contains(strtolower($message), 'access denied')) {
+                throw new RuntimeException(
+                    'Database access denied (MySQL 1045). On Hostinger: open hPanel → Databases → MySQL, '
+                    .'click the user ⋮ → Change password, paste that exact new password here, and confirm the user '
+                    .'is assigned to database "'.$database.'". Host is usually localhost (127.0.0.1 also OK). '
+                    .'Original error: '.$message
+                );
+            }
+
+            throw new RuntimeException('Database connection failed: '.$message);
         }
 
         $this->writeEnv([
             'DB_CONNECTION' => 'mysql',
-            'DB_HOST' => $host,
-            'DB_PORT' => (string) $port,
+            'DB_HOST' => $connectedHost,
+            'DB_PORT' => $port,
             'DB_DATABASE' => $database,
             'DB_USERNAME' => $username,
             'DB_PASSWORD' => $password,
@@ -212,7 +248,7 @@ class InstallOrchestrator
 
         Artisan::call('config:clear');
 
-        return ['connected' => true, 'database' => $database];
+        return ['connected' => true, 'database' => $database, 'host' => $connectedHost];
     }
 
     /**
