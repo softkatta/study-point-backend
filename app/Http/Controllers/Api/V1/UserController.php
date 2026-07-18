@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\User;
 use App\Services\AuditService;
 use App\Services\SecurityPolicyService;
+use SoftKatta\Licensing\Services\LicenseService;
 use App\Support\ApiResponse;
 use App\Support\BranchScope;
 use App\Support\Roles;
@@ -22,6 +23,7 @@ class UserController extends Controller
     public function __construct(
         private SecurityPolicyService $security,
         private AuditService $audit,
+        private LicenseService $license,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -48,6 +50,12 @@ class UserController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        try {
+            $this->license->assertWithinLimit('max_users', User::query()->count());
+        } catch (\RuntimeException $e) {
+            return ApiResponse::error($e->getMessage(), 403);
+        }
+
         $request->validate([
             'roles' => ['sometimes', 'array', 'min:1'],
             'roles.*' => ['string', Rule::exists('roles', 'name')->where('guard_name', 'web')],

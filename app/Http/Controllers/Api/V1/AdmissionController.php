@@ -17,6 +17,8 @@ use App\Services\AdmissionService;
 use App\Services\NotificationChannelService;
 use App\Services\PaymentGatewayService;
 use App\Services\PaymentService;
+use SoftKatta\Licensing\Services\LicenseService;
+use App\Models\Student;
 use App\Support\AdmissionPaymentLink;
 use App\Support\ApiResponse;
 use App\Support\BranchScope;
@@ -31,6 +33,7 @@ class AdmissionController extends Controller
         private PaymentService $paymentService,
         private PaymentGatewayService $gateway,
         private NotificationChannelService $notificationChannels,
+        private LicenseService $license,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -62,6 +65,12 @@ class AdmissionController extends Controller
 
     public function store(StoreAdmissionRequest $request): JsonResponse
     {
+        try {
+            $this->license->assertWithinLimit('max_students', Student::query()->count());
+        } catch (\RuntimeException $e) {
+            return ApiResponse::error($e->getMessage(), 403);
+        }
+
         $user = $request->user();
         $data = $request->validated();
 

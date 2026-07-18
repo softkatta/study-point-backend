@@ -29,12 +29,29 @@ use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\WhatsAppController;
 use App\Http\Controllers\Api\V1\WhatsAppWebhookController;
 use App\Http\Controllers\Api\V1\PaymentWebhookController;
+use App\Http\Controllers\Api\V1\InstallController;
+use App\Http\Controllers\Api\V1\LicenseController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::match(['get', 'post'], 'webhooks/whatsapp/meta', [WhatsAppWebhookController::class, 'meta']);
     Route::post('webhooks/payments/razorpay', [PaymentWebhookController::class, 'razorpay']);
 
+    // Install wizard (locked after successful installation)
+    Route::prefix('install')->middleware(['throttle:30,1', 'install.not_completed'])->group(function () {
+        Route::get('status', [InstallController::class, 'status']);
+        Route::get('requirements', [InstallController::class, 'requirements']);
+        Route::post('database', [InstallController::class, 'database']);
+        Route::post('admin', [InstallController::class, 'admin']);
+        Route::post('activate', [InstallController::class, 'activate']);
+        Route::get('configuration', [InstallController::class, 'downloadConfiguration']);
+        Route::post('migrate', [InstallController::class, 'migrate']);
+        Route::post('complete', [InstallController::class, 'complete']);
+    });
+
+    Route::get('license/entitlements', [LicenseController::class, 'entitlements']);
+    Route::post('license/verify', [LicenseController::class, 'verify']);
+    Route::post('license/activate', [InstallController::class, 'activate']);
     Route::prefix('auth')->group(function () {
         Route::post('login', [AuthController::class, 'login']);
         Route::post('2fa/verify', [AuthController::class, 'verifyTwoFactor']);

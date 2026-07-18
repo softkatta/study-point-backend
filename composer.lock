@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "e31dd2c8709018eeeb6ea025c3b390db",
+    "content-hash": "58777cfb5defc3a93871d9b4a08cf52c",
     "packages": [
         {
             "name": "brick/math",
@@ -3664,6 +3664,48 @@
                 "source": "https://github.com/MyIntervals/PHP-CSS-Parser/tree/v9.4.0"
             },
             "time": "2026-06-18T15:10:53+00:00"
+        },
+        {
+            "name": "softkatta/licensing",
+            "version": "1.0.0",
+            "dist": {
+                "type": "path",
+                "url": "../../packages/softkatta-licensing",
+                "reference": "145462071517750e9adf057947dd00dfe8e60ab6"
+            },
+            "require": {
+                "illuminate/console": "^11.0|^12.0",
+                "illuminate/database": "^11.0|^12.0",
+                "illuminate/http": "^11.0|^12.0",
+                "illuminate/support": "^11.0|^12.0",
+                "php": "^8.2"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "SoftKatta\\Licensing\\SoftKattaLicensingServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "SoftKatta\\Licensing\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "SoftKatta\\Licensing\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "SoftKatta product licensing client — Company API, install tokens, offline grace",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
         },
         {
             "name": "spatie/laravel-permission",

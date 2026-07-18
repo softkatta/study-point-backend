@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\BranchResource;
 use App\Models\Branch;
 use App\Models\Student;
+use SoftKatta\Licensing\Services\LicenseService;
 use App\Support\ApiResponse;
 use App\Support\BranchScope;
 use Illuminate\Http\JsonResponse;
@@ -14,6 +15,8 @@ use Illuminate\Validation\Rule;
 
 class BranchController extends Controller
 {
+    public function __construct(private LicenseService $license) {}
+
     public function index(Request $request): JsonResponse
     {
         $query = Branch::withCount('students')->with('managers')->orderByDesc('is_head_office')->orderBy('name');
@@ -33,6 +36,12 @@ class BranchController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        try {
+            $this->license->assertWithinLimit('max_branches', Branch::query()->count());
+        } catch (\RuntimeException $e) {
+            return ApiResponse::error($e->getMessage(), 403);
+        }
+
         $data = $request->validate([
             'code' => ['required', 'string', 'max:20', 'unique:branches,code'],
             'name' => ['required', 'string', 'max:100'],
