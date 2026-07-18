@@ -17,6 +17,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Hostinger / Cloudflare: use the public Host header, not the internal proxy host.
+        $middleware->trustProxies(at: '*');
+
         $middleware->api(prepend: [
             \App\Http\Middleware\ForceHttps::class,
             \App\Http\Middleware\ApiRateLimitMiddleware::class,
