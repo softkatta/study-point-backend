@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('product_slug')->nullable();
             $table->string('server_fingerprint')->nullable();
             $table->string('bound_domain')->nullable();
-            $table->string('license_key')->nullable();
+            $table->text('license_key')->nullable();
             $table->string('plan_slug')->nullable();
             $table->timestamp('last_verified_at')->nullable();
             $table->timestamp('installed_at')->nullable();

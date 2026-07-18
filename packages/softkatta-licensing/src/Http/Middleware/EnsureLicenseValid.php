@@ -29,17 +29,15 @@ class EnsureLicenseValid
         }
 
         // After SoftKatta suspend/revoke, block public marketing APIs too.
-        // Remotely recoverable blocks (suspend) re-check SoftKatta so Admin Activate restores automatically.
+        // Always re-check SoftKatta — Admin Activate may revive sessions or clear suspend.
         if ($this->license->isHardBlocked()) {
             $code = $this->license->state()->last_error_code ?: LicenseErrorCode::INVALID_LICENSE;
 
-            if (LicenseErrorCode::isRemotelyRecoverable($code)) {
-                $result = $this->license->verify(true);
-                if ($result['ok'] ?? false) {
-                    return $next($request);
-                }
-                $code = $result['error_code'] ?? $code;
+            $result = $this->license->verify(true);
+            if ($result['ok'] ?? false) {
+                return $next($request);
             }
+            $code = $result['error_code'] ?? $code;
 
             if ($code === LicenseErrorCode::INVALID_INSTALL_TOKEN) {
                 $reactivated = $this->license->attemptAutoReactivate();
@@ -90,8 +88,8 @@ class EnsureLicenseValid
             return response()->json([
                 'success' => false,
                 'message' => 'Product license is not activated.',
-                'error_code' => 'INVALID_LICENSE',
-                'data' => ['redirect' => '/install'],
+                'error_code' => LicenseErrorCode::INVALID_INSTALL_TOKEN,
+                'data' => ['redirect' => '/license/invalid-install-token'],
             ], 403);
         }
 

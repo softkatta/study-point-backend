@@ -14,6 +14,9 @@ class LicenseService
         private ServerFingerprintService $fingerprint,
     ) {}
 
+    /** Prevent activate ↔ verify auto-reactivate recursion. */
+    private bool $inAutoReactivate = false;
+
     public function isLicensingEnabled(): bool
     {
         return (bool) config('softkatta.enabled', true);
@@ -61,12 +64,23 @@ class LicenseService
             return $result;
         }
 
-        $data = $result['data'];
+        $data = $result['data'] ?? [];
+        if (! is_array($data) || blank($data['install_token'] ?? null) || blank($data['installation_id'] ?? null)) {
+            $state->forceFill(['last_error_code' => LicenseErrorCode::INVALID_LICENSE])->save();
+
+            return [
+                'ok' => false,
+                'error_code' => LicenseErrorCode::INVALID_LICENSE,
+                'message' => 'SoftKatta activate succeeded but did not return install tokens.',
+                'data' => $data,
+            ];
+        }
+
         $profile = $data['configuration_profile'] ?? [];
 
         $state->forceFill([
             'install_token' => $data['install_token'],
-            'refresh_token' => $data['refresh_token'],
+            'refresh_token' => $data['refresh_token'] ?? null,
             'installation_id' => $data['installation_id'],
             'customer_id' => $data['customer_id'] ?? null,
             'product_slug' => $data['product_slug'] ?? config('softkatta.product_slug'),
@@ -80,6 +94,15 @@ class LicenseService
             'last_error_code' => null,
             'product_version_at_verify' => config('softkatta.product_version'),
         ])->save();
+
+        // Confirm SoftKatta accepts the new session before telling the UI "restored".
+        // Skip when called from attemptAutoReactivate — caller retries verify once.
+        if (! $this->inAutoReactivate) {
+            $verified = $this->verify(true);
+            if (! ($verified['ok'] ?? false)) {
+                return $verified;
+            }
+        }
 
         return $result;
     }
@@ -170,6 +193,19 @@ class LicenseService
             if ($refreshed['ok'] ?? false) {
                 $state = $this->state();
                 $result = $this->client->verify($state->install_token, $state->installation_id);
+            } elseif (
+                filled($state->license_key)
+                && ($refreshed['error_code'] ?? '') === LicenseErrorCode::INVALID_INSTALL_TOKEN
+            ) {
+                // SoftKatta Admin Activate after Suspend (older builds revoked tokens).
+                // Mint a fresh install session with the stored license key.
+                $reactivated = $this->attemptAutoReactivate($state);
+                if ($reactivated['ok'] ?? false) {
+                    $state = $this->state();
+                    $result = $this->client->verify($state->install_token, $state->installation_id);
+                } else {
+                    return $this->recordHardFailure($state, $reactivated);
+                }
             } elseif (LicenseErrorCode::isHardFailure($refreshed['error_code'] ?? null)) {
                 return $this->recordHardFailure($state, $refreshed);
             }
@@ -312,7 +348,20 @@ class LicenseService
             ];
         }
 
-        return $this->activate($key);
+        if ($this->inAutoReactivate) {
+            return [
+                'ok' => false,
+                'error_code' => LicenseErrorCode::INVALID_INSTALL_TOKEN,
+                'message' => 'Automatic re-activation already in progress.',
+            ];
+        }
+
+        $this->inAutoReactivate = true;
+        try {
+            return $this->activate($key);
+        } finally {
+            $this->inAutoReactivate = false;
+        }
     }
 
     public function syncModules(): array
