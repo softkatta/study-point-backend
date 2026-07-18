@@ -1,0 +1,33 @@
+{
+    "name": "softkatta/licensing",
+    "description": "SoftKatta product licensing client — Company API, install tokens, offline grace",
+    "type": "library",
+    "version": "1.0.0",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0",
+        "illuminate/http": "^11.0|^12.0",
+        "illuminate/database": "^11.0|^12.0",
+        "illuminate/console": "^11.0|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "SoftKatta\\Licensing\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "SoftKatta\\Licensing\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "SoftKatta\\Licensing\\SoftKattaLicensingServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

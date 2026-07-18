@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "58777cfb5defc3a93871d9b4a08cf52c",
+    "content-hash": "fd1261b2534d1309f0c7c9b176eedfcd",
     "packages": [
         {
             "name": "brick/math",
@@ -3670,7 +3670,7 @@
             "version": "1.0.0",
             "dist": {
                 "type": "path",
-                "url": "../../packages/softkatta-licensing",
+                "url": "./packages/softkatta-licensing",
                 "reference": "145462071517750e9adf057947dd00dfe8e60ab6"
             },
             "require": {

@@ -88,7 +88,7 @@
     "repositories": [
         {
             "type": "path",
-            "url": "../../packages/softkatta-licensing",
+            "url": "./packages/softkatta-licensing",
             "options": {
                 "symlink": true
             }
