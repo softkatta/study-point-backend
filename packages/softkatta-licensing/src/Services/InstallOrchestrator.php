@@ -185,41 +185,68 @@ class InstallOrchestrator
 
     public function configureDatabase(array $data): array
     {
-        $host = trim((string) ($data['host'] ?? '127.0.0.1'));
+        $host = trim((string) ($data['host'] ?? 'localhost'));
         $port = trim((string) ($data['port'] ?? '3306')) ?: '3306';
         $database = trim((string) ($data['database'] ?? ''));
         $username = trim((string) ($data['username'] ?? ''));
-        // Do not trim interior spaces — only strip accidental copy/paste newlines.
+        // Strip only CR/LF from paste; keep spaces inside the password.
         $password = preg_replace("/[\r\n]+/", '', (string) ($data['password'] ?? '')) ?? '';
 
         if ($database === '' || $username === '') {
             throw new RuntimeException('Database name and username are required.');
         }
 
-        // Hostinger shared hosting: DB already exists in hPanel — never CREATE DATABASE.
-        // Also try localhost <-> 127.0.0.1 (MySQL treats them as different account hosts).
+        // Blank password = keep existing .env password (common on re-install).
+        if ($password === '') {
+            $password = (string) (config('database.connections.mysql.password') ?? '');
+            if ($password === '') {
+                $password = (string) $this->readEnvValue('DB_PASSWORD');
+            }
+        }
+
+        if ($password === '') {
+            throw new RuntimeException(
+                'Database password is required. Paste the MySQL password from Hostinger hPanel '
+                .'(Databases → MySQL → user ⋮ → Change password if unsure).'
+            );
+        }
+
         $hostsToTry = array_values(array_unique(array_filter([
-            $host,
-            $host === '127.0.0.1' ? 'localhost' : null,
-            $host === 'localhost' ? '127.0.0.1' : null,
+            $host !== '' ? $host : 'localhost',
+            'localhost',
+            '127.0.0.1',
         ])));
 
         $lastError = null;
-        $connectedHost = $host;
+        $connectedHost = $hostsToTry[0];
+        $connectedWithPort = true;
 
         foreach ($hostsToTry as $tryHost) {
-            try {
-                $dsn = "mysql:host={$tryHost};port={$port};dbname={$database};charset=utf8mb4";
-                $pdo = new PDO($dsn, $username, $password, [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_TIMEOUT => 8,
-                ]);
-                $pdo->query('SELECT 1');
-                $connectedHost = $tryHost;
-                $lastError = null;
-                break;
-            } catch (\Throwable $e) {
-                $lastError = $e;
+            // Hostinger: localhost + explicit port often forces TCP and triggers 1045.
+            // Try unix-socket style DSN (no port) first, then TCP with port.
+            $dsnVariants = $this->isLocalMysqlHost($tryHost)
+                ? [
+                    "mysql:host={$tryHost};dbname={$database};charset=utf8mb4",
+                    "mysql:host={$tryHost};port={$port};dbname={$database};charset=utf8mb4",
+                ]
+                : [
+                    "mysql:host={$tryHost};port={$port};dbname={$database};charset=utf8mb4",
+                ];
+
+            foreach ($dsnVariants as $index => $dsn) {
+                try {
+                    $pdo = new PDO($dsn, $username, $password, [
+                        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                        PDO::ATTR_TIMEOUT => 8,
+                    ]);
+                    $pdo->query('SELECT 1');
+                    $connectedHost = $tryHost;
+                    $connectedWithPort = ! ($this->isLocalMysqlHost($tryHost) && $index === 0);
+                    $lastError = null;
+                    break 2;
+                } catch (\Throwable $e) {
+                    $lastError = $e;
+                }
             }
         }
 
@@ -227,10 +254,11 @@ class InstallOrchestrator
             $message = $lastError->getMessage();
             if (str_contains($message, '1045') || str_contains(strtolower($message), 'access denied')) {
                 throw new RuntimeException(
-                    'Database access denied (MySQL 1045). On Hostinger: open hPanel → Databases → MySQL, '
-                    .'click the user ⋮ → Change password, paste that exact new password here, and confirm the user '
-                    .'is assigned to database "'.$database.'". Host is usually localhost (127.0.0.1 also OK). '
-                    .'Original error: '.$message
+                    'MySQL rejected this username/password (1045). '
+                    .'Fix in Hostinger hPanel → Databases → MySQL: '
+                    .'(1) user ⋮ → Change password, (2) paste the NEW password here (disable browser autofill), '
+                    .'(3) confirm user "'.$username.'" is assigned to database "'.$database.'". '
+                    .'Host should be localhost. Details: '.$message
                 );
             }
 
@@ -246,9 +274,58 @@ class InstallOrchestrator
             'DB_PASSWORD' => $password,
         ]);
 
+        // Apply immediately so later migrate/admin steps in this PHP process work.
+        config([
+            'database.default' => 'mysql',
+            'database.connections.mysql.host' => $connectedHost,
+            'database.connections.mysql.port' => $port,
+            'database.connections.mysql.database' => $database,
+            'database.connections.mysql.username' => $username,
+            'database.connections.mysql.password' => $password,
+        ]);
+
         Artisan::call('config:clear');
 
-        return ['connected' => true, 'database' => $database, 'host' => $connectedHost];
+        return [
+            'connected' => true,
+            'database' => $database,
+            'host' => $connectedHost,
+            'used_port_in_dsn' => $connectedWithPort,
+        ];
+    }
+
+    private function isLocalMysqlHost(string $host): bool
+    {
+        $host = strtolower($host);
+
+        return in_array($host, ['localhost', '127.0.0.1', '::1'], true);
+    }
+
+    /**
+     * Read a raw value from .env without going through config cache.
+     */
+    private function readEnvValue(string $key): string
+    {
+        $path = base_path('.env');
+        if (! File::exists($path)) {
+            return '';
+        }
+
+        $content = File::get($path);
+        if (! preg_match("/^{$key}=(.*)$/m", $content, $matches)) {
+            return '';
+        }
+
+        $value = trim($matches[1]);
+        if (
+            (str_starts_with($value, '"') && str_ends_with($value, '"'))
+            || (str_starts_with($value, "'") && str_ends_with($value, "'"))
+        ) {
+            $value = substr($value, 1, -1);
+            $value = str_replace(['\\"', '\\$', '\\\\'], ['"', '$', '\\'], $value);
+        }
+
+        return $value;
     }
 
     /**
@@ -408,10 +485,7 @@ class InstallOrchestrator
 
     private function envValue(string $value): string
     {
-        if ($value === '' || preg_match('/\s|#|"|\'/', $value)) {
-            return '"'.str_replace('"', '\"', $value).'"';
-        }
-
-        return $value;
+        // Always double-quote and escape so $, #, spaces, quotes survive Dotenv parsing.
+        return '"'.addcslashes($value, "\\\"$\n\r").'"';
     }
 }
