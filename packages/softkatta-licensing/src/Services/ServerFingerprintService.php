@@ -28,15 +28,36 @@ class ServerFingerprintService
 
     public function currentDomain(): string
     {
-        $configured = config('app.url');
-        if ($configured) {
+        // Prefer the live public hostname over APP_URL (often left as localhost after migrate/seed).
+        $requestHost = (string) request()->getHost();
+        if ($requestHost !== '' && ! $this->isLoopbackHost($requestHost)) {
+            return strtolower($this->stripPort($requestHost));
+        }
+
+        $configured = (string) config('app.url');
+        if ($configured !== '') {
             $host = parse_url($configured, PHP_URL_HOST);
+            if (is_string($host) && $host !== '' && ! $this->isLoopbackHost($host)) {
+                return strtolower($this->stripPort($host));
+            }
             if (is_string($host) && $host !== '') {
                 return strtolower($this->stripPort($host));
             }
         }
 
-        return strtolower($this->stripPort((string) request()->getHost()));
+        if ($requestHost !== '') {
+            return strtolower($this->stripPort($requestHost));
+        }
+
+        return 'localhost';
+    }
+
+    private function isLoopbackHost(string $host): bool
+    {
+        $host = strtolower($this->stripPort($host));
+
+        return in_array($host, ['localhost', '127.0.0.1', '::1'], true)
+            || str_ends_with($host, '.localhost');
     }
 
     private function stripPort(string $host): string
