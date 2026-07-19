@@ -64,7 +64,16 @@ class LicenseService
     public function activate(string $licenseKey): array
     {
         $state = $this->state();
-        $result = $this->client->activate($licenseKey, $state->installation_id);
+        // SoftKatta Admin data wipe / new key: do not reuse a stale installation_id.
+        $installationId = $state->installation_id;
+        if (
+            LicenseErrorCode::isHardFailure($state->last_error_code)
+            || (filled($state->license_key) && trim((string) $state->license_key) !== trim($licenseKey))
+        ) {
+            $installationId = null;
+        }
+
+        $result = $this->client->activate($licenseKey, $installationId);
 
         if (! ($result['ok'] ?? false)) {
             $state->forceFill(['last_error_code' => $result['error_code'] ?? LicenseErrorCode::INVALID_LICENSE])->save();

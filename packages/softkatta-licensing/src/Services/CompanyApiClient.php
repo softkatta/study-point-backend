@@ -82,14 +82,6 @@ class CompanyApiClient
             return $this->configError('Company API URL must use HTTPS in production.');
         }
 
-        $domain = $this->normalizeDomain($this->fingerprint->currentDomain());
-        $fp = $this->fingerprint->generate();
-        $productSlug = trim((string) config('softkatta.product_slug'));
-        $productVersion = trim((string) config('softkatta.product_version'));
-        $installationId = (string) ($installationId ?? '');
-        $timestamp = (string) time();
-        $nonce = Str::random(32);
-
         $endpoint = '/'.ltrim($path, '/');
         $url = $base.$endpoint;
         $parsedPath = $this->signingPath($base, $endpoint);
@@ -97,6 +89,14 @@ class CompanyApiClient
         $rawBody = in_array(strtoupper($method), ['GET', 'HEAD'], true)
             ? ''
             : (string) json_encode($body, JSON_UNESCAPED_SLASHES);
+
+        $domain = $this->resolveRequestDomain($endpoint);
+        $fp = $this->fingerprint->generate();
+        $productSlug = trim((string) config('softkatta.product_slug'));
+        $productVersion = trim((string) config('softkatta.product_version'));
+        $installationId = (string) ($installationId ?? '');
+        $timestamp = (string) time();
+        $nonce = Str::random(32);
 
         $canonical = HmacSigner::canonicalString(
             $method,
@@ -165,6 +165,35 @@ class CompanyApiClient
             'data' => $json['data'] ?? null,
             'status' => $response->status(),
         ];
+    }
+
+    /**
+     * After activate, SoftKatta binds an installation to a canonical SPA domain.
+     * Later verify/heartbeat must send that same host — not the API host.
+     */
+    private function resolveRequestDomain(string $endpoint): string
+    {
+        $isActivate = str_ends_with(rtrim($endpoint, '/'), '/activate');
+
+        if (! $isActivate) {
+            $bound = $this->storedBoundDomain();
+            if ($bound !== null && $bound !== '') {
+                return $this->normalizeDomain($bound);
+            }
+        }
+
+        return $this->normalizeDomain($this->fingerprint->currentDomain());
+    }
+
+    private function storedBoundDomain(): ?string
+    {
+        try {
+            $bound = \SoftKatta\Licensing\Models\LicenseState::query()->value('bound_domain');
+
+            return is_string($bound) && trim($bound) !== '' ? trim($bound) : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
