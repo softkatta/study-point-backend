@@ -26,6 +26,17 @@ class EnsureLicenseValid
 
         try {
             return $this->enforce($request, $next);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Stored license tokens cannot be read. Enter your SoftKatta license key again on Restore access.',
+                'error_code' => LicenseErrorCode::INVALID_INSTALL_TOKEN,
+                'data' => [
+                    'redirect' => LicenseErrorCode::frontendPath(LicenseErrorCode::INVALID_INSTALL_TOKEN),
+                ],
+            ], 403);
         } catch (\Throwable $e) {
             report($e);
 

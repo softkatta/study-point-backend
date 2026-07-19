@@ -20,6 +20,7 @@ final class LicenseErrorCode
     public const GRACE_EXPIRED = 'GRACE_EXPIRED';
     public const NOT_INSTALLED = 'NOT_INSTALLED';
     public const COMPANY_API_UNAVAILABLE = 'COMPANY_API_UNAVAILABLE';
+    public const COMPANY_API_NOT_CONFIGURED = 'COMPANY_API_NOT_CONFIGURED';
 
     /**
      * Errors that must stop the product immediately (no offline/cache bypass).
@@ -40,6 +41,7 @@ final class LicenseErrorCode
             self::SERVER_VERIFICATION_FAILED,
             self::INVALID_INSTALL_TOKEN,
             self::GRACE_EXPIRED,
+            self::COMPANY_API_NOT_CONFIGURED,
         ];
     }
 
@@ -91,6 +93,7 @@ final class LicenseErrorCode
             self::INVALID_INSTALL_TOKEN => '/license/invalid-install-token',
             self::GRACE_EXPIRED => '/license/grace-expired',
             self::COMPANY_API_UNAVAILABLE => '/license/company-api-unavailable',
+            self::COMPANY_API_NOT_CONFIGURED => '/license/company-api-unavailable',
             default => '/license/invalid',
         };
     }
