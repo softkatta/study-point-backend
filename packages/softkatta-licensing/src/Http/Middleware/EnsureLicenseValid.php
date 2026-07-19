@@ -28,6 +28,17 @@ class EnsureLicenseValid
             return $next($request);
         }
 
+        if (! $this->license->isCompanyApiConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'SoftKatta Product Integration is not configured. Create an integration in SoftKatta Admin and enter the API keys on this product.',
+                'error_code' => LicenseErrorCode::COMPANY_API_NOT_CONFIGURED,
+                'data' => [
+                    'redirect' => LicenseErrorCode::frontendPath(LicenseErrorCode::COMPANY_API_NOT_CONFIGURED),
+                ],
+            ], 403);
+        }
+
         // After SoftKatta suspend/revoke, block public marketing APIs too.
         // Always re-check SoftKatta — Admin Activate may revive sessions or clear suspend.
         if ($this->license->isHardBlocked()) {

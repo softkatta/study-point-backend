@@ -22,6 +22,14 @@ class LicenseService
         return (bool) config('softkatta.enabled', true);
     }
 
+    public function isCompanyApiConfigured(): bool
+    {
+        return filled(config('softkatta.company_api_url'))
+            && filled(config('softkatta.public_api_key'))
+            && filled(config('softkatta.api_secret'))
+            && filled(config('softkatta.product_slug'));
+    }
+
   public function isInstalled(): bool
   {
         try {
@@ -135,6 +143,20 @@ class LicenseService
     {
         if (! $this->isLicensingEnabled()) {
             return ['ok' => true, 'from_cache' => true, 'data' => ['licensing_disabled' => true]];
+        }
+
+        if (! $this->isCompanyApiConfigured()) {
+            $state = $this->state();
+            $state->forceFill([
+                'last_error_code' => LicenseErrorCode::COMPANY_API_NOT_CONFIGURED,
+                'last_verified_at' => null,
+            ])->save();
+
+            return [
+                'ok' => false,
+                'error_code' => LicenseErrorCode::COMPANY_API_NOT_CONFIGURED,
+                'message' => 'SoftKatta Product Integration credentials are not configured. Create an integration in SoftKatta Admin and enter the API keys.',
+            ];
         }
 
         $state = $this->state();

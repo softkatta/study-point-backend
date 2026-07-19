@@ -27,14 +27,21 @@ class InstallOrchestrator
             $state = \SoftKatta\Licensing\Models\LicenseState::query()->first();
             $hasToken = filled($state?->install_token);
             $hardBlocked = \SoftKatta\Licensing\Support\LicenseErrorCode::isHardFailure($state?->last_error_code);
-            // After SoftKatta suspend, token may still exist locally but is dead — allow re-activation.
-            $hasLicense = $hasToken && ! $hardBlocked;
+            $companyConfigured = $this->isCompanyApiConfigured();
+            // Local install_token alone is not enough — SoftKatta Product Integration credentials must exist.
+            $hasLicense = $hasToken && ! $hardBlocked && $companyConfigured;
+            if ($installed && $hasToken && ! $companyConfigured) {
+                $state?->forceFill([
+                    'last_error_code' => \SoftKatta\Licensing\Support\LicenseErrorCode::COMPANY_API_NOT_CONFIGURED,
+                ])->save();
+            }
         } catch (\Throwable) {
             // DB unavailable: lock file means install already finished — never reopen the wizard.
             $installed = File::exists(storage_path('app/installed'));
             $state = null;
             $hasLicense = false;
             $databaseUnavailable = $installed;
+            $companyConfigured = false;
         }
 
         return [
@@ -45,10 +52,14 @@ class InstallOrchestrator
             'fingerprint' => $this->fingerprint->generate(),
             'has_license' => $hasLicense,
             'needs_reactivation' => $installed && ! $hasLicense,
-            'last_error_code' => $databaseUnavailable ? 'DATABASE_UNAVAILABLE' : $state?->last_error_code,
+            'last_error_code' => $databaseUnavailable
+                ? 'DATABASE_UNAVAILABLE'
+                : (($installed && ! ($companyConfigured ?? $this->isCompanyApiConfigured()))
+                    ? \SoftKatta\Licensing\Support\LicenseErrorCode::COMPANY_API_NOT_CONFIGURED
+                    : $state?->last_error_code),
             'database_unavailable' => $databaseUnavailable,
             'bound_domain' => $state?->bound_domain,
-            'company_api_configured' => $this->isCompanyApiConfigured(),
+            'company_api_configured' => $companyConfigured ?? $this->isCompanyApiConfigured(),
             'company_api' => [
                 'company_api_url' => (string) config('softkatta.company_api_url'),
                 'public_api_key' => $this->maskSecret($publicKey),
@@ -71,7 +82,7 @@ class InstallOrchestrator
             'configuration' => ($hasLicense && $state)
                 ? $this->license->configurationProfile()
                 : null,
-            'entitlements' => $installed ? $this->license->entitlements() : null,
+            'entitlements' => $hasLicense ? $this->license->entitlements() : null,
         ];
     }
 
