@@ -21,6 +21,10 @@ class InstallOrchestrator
         $secret = (string) config('softkatta.api_secret');
 
         $databaseUnavailable = false;
+        $state = null;
+        $installed = false;
+        $hasLicense = false;
+        $companyConfigured = false;
 
         try {
             $installed = $this->license->isInstalled();
@@ -62,11 +66,16 @@ class InstallOrchestrator
             'company_api_configured' => $companyConfigured ?? $this->isCompanyApiConfigured(),
             'company_api' => [
                 'company_api_url' => (string) config('softkatta.company_api_url'),
-                'public_api_key' => $this->maskSecret($publicKey),
+                // Public integration key is designed to be copied into the product — prefill Restore form.
+                'public_api_key' => $publicKey,
                 'api_secret_set' => $secret !== '',
                 'product_slug' => $this->resolveProductSlug(),
                 'product_version' => (string) config('softkatta.product_version'),
-                'app_url' => (string) config('app.url'),
+                'app_url' => (string) (
+                    config('softkatta.frontend_url')
+                    ?: config('app.frontend_url')
+                    ?: config('app.url')
+                ),
                 'require_https' => (bool) config('softkatta.require_https'),
                 'offline_grace_days' => (int) config('softkatta.offline_grace_days'),
                 'verify_interval_hours' => (int) config('softkatta.verify_interval_hours'),
