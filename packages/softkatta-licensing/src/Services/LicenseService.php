@@ -558,6 +558,52 @@ class LicenseService
         $code = $result['error_code'] ?? LicenseErrorCode::INVALID_LICENSE;
         $message = $result['message'] ?? 'License verification failed.';
 
+        // Concurrent public GETs can finish SoftKatta reject AFTER Restore already succeeded.
+        // Never overwrite a fresh healthy session with a stale failure (causes Invalid License loop).
+        try {
+            $state->refresh();
+        } catch (\Throwable) {
+            // continue with in-memory state
+        }
+
+        if (
+            $state->last_error_code === null
+            && filled($state->install_token)
+            && $state->last_verified_at
+            && $state->last_verified_at->gt(now()->subSeconds(60))
+        ) {
+            return [
+                'ok' => true,
+                'from_cache' => true,
+                'message' => 'License session was restored concurrently; ignoring stale SoftKatta failure.',
+                'data' => [
+                    'modules' => $state->modules_cache ?? [],
+                    'limits' => $state->limits_cache ?? [],
+                    'bound_domain' => $state->bound_domain,
+                ],
+            ];
+        }
+
+        // Stale verify used an old install_token while Restore minted a new one.
+        if (
+            filled($state->install_token)
+            && $state->last_error_code === null
+            && ($result['error_code'] ?? '') === LicenseErrorCode::INVALID_INSTALL_TOKEN
+            && $state->updated_at
+            && $state->updated_at->gt(now()->subSeconds(60))
+        ) {
+            return [
+                'ok' => true,
+                'from_cache' => true,
+                'message' => 'Ignoring stale install-token failure after a recent license update.',
+                'data' => [
+                    'modules' => $state->modules_cache ?? [],
+                    'limits' => $state->limits_cache ?? [],
+                    'bound_domain' => $state->bound_domain,
+                ],
+            ];
+        }
+
         $payload = [
             'last_error_code' => $code,
         ];
