@@ -16,9 +16,30 @@ class HeadOfficeController extends Controller
 
     public function show(): JsonResponse
     {
-        $office = $this->headOffice->find() ?? $this->headOffice->getOrCreate();
+        try {
+            $office = $this->headOffice->find() ?? $this->headOffice->getOrCreate();
 
-        return ApiResponse::success(new HeadOfficeResource($office));
+            return ApiResponse::success(new HeadOfficeResource($office));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return ApiResponse::success([
+                'id' => null,
+                'code' => 'HO',
+                'name' => 'StudyPoint',
+                'legal_name' => 'StudyPoint',
+                'city' => '',
+                'state' => '',
+                'pincode' => '',
+                'address' => '',
+                'phone' => '',
+                'email' => '',
+                'website' => '',
+                'timezone' => 'Asia/Kolkata',
+                'currency' => 'INR',
+                'currency_symbol' => '₹',
+            ]);
+        }
     }
 
     public function manageShow(): JsonResponse

@@ -673,20 +673,19 @@ class SettingController extends Controller
             $data = AppearanceDefaults::merge([]);
         }
 
-        if (! empty($data['logo_url'])) {
-            $data['logo_url'] = MediaUrl::absolute($data['logo_url']);
-        }
-        if (! empty($data['favicon_url'])) {
-            $data['favicon_url'] = MediaUrl::absolute($data['favicon_url']);
-        }
-        if (! empty($data['id_card_accent_image_url'])) {
-            $data['id_card_accent_image_url'] = MediaUrl::absolute($data['id_card_accent_image_url']);
-        }
-        if (! empty($data['id_card_back_image_url'])) {
-            $data['id_card_back_image_url'] = MediaUrl::absolute($data['id_card_back_image_url']);
-        }
-        if (! empty($data['meta']['og_image'])) {
-            $data['meta']['og_image'] = MediaUrl::absolute($data['meta']['og_image']);
+        try {
+            foreach (['logo_url', 'favicon_url', 'id_card_accent_image_url', 'id_card_back_image_url'] as $key) {
+                if (is_string($data[$key] ?? null) && $data[$key] !== '') {
+                    $data[$key] = MediaUrl::absolute($data[$key]);
+                } else {
+                    $data[$key] = is_string($data[$key] ?? null) ? $data[$key] : null;
+                }
+            }
+            if (is_array($data['meta'] ?? null) && is_string($data['meta']['og_image'] ?? null) && $data['meta']['og_image'] !== '') {
+                $data['meta']['og_image'] = MediaUrl::absolute($data['meta']['og_image']);
+            }
+        } catch (\Throwable) {
+            // Corrupt media URLs must not 500 public branding.
         }
 
         return $data;

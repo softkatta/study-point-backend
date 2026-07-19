@@ -179,12 +179,26 @@ class LicenseService
         }
 
         if (LicenseErrorCode::isHardFailure($state->last_error_code) && ! $force) {
-            // Suspend/disable can be cleared by SoftKatta Admin Activate — always re-check online.
+            // Suspend/disable can be cleared by SoftKatta Admin Activate — re-check online,
+            // but throttle so every public GET does not stampede SoftKatta (Hostinger timeouts → 500).
             if (! LicenseErrorCode::isRemotelyRecoverable($state->last_error_code)) {
                 return [
                     'ok' => false,
                     'error_code' => $state->last_error_code,
                     'message' => 'License access is blocked. Contact SoftKatta support or re-activate after the license is restored.',
+                ];
+            }
+
+            $recheckMinutes = max(1, (int) config('softkatta.verify_interval_minutes', 1));
+            if (
+                $state->last_verified_at
+                && $state->last_verified_at->gt(now()->subMinutes($recheckMinutes))
+            ) {
+                return [
+                    'ok' => false,
+                    'error_code' => $state->last_error_code,
+                    'message' => 'License access is blocked.',
+                    'from_cache' => true,
                 ];
             }
         }

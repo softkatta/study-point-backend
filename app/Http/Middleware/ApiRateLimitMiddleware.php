@@ -23,13 +23,17 @@ class ApiRateLimitMiddleware
 
         $key = 'api-rate:'.($request->user()?->id ?: $request->ip());
 
-        if (RateLimiter::tooManyAttempts($key, $limit)) {
-            $seconds = RateLimiter::availableIn($key);
+        try {
+            if (RateLimiter::tooManyAttempts($key, $limit)) {
+                $seconds = RateLimiter::availableIn($key);
 
-            return ApiResponse::error("Too many requests. Try again in {$seconds} seconds.", 429);
+                return ApiResponse::error("Too many requests. Try again in {$seconds} seconds.", 429);
+            }
+
+            RateLimiter::hit($key, 60);
+        } catch (\Throwable) {
+            // Cache driver outage must not take down public APIs.
         }
-
-        RateLimiter::hit($key, 60);
 
         return $next($request);
     }

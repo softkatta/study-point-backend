@@ -132,9 +132,9 @@ class CompanyApiClient
         }
 
         try {
-            $pending = Http::withHeaders($headers)->timeout(20)->withBody($rawBody !== '' ? $rawBody : '{}', 'application/json');
+            $pending = Http::withHeaders($headers)->timeout(8)->connectTimeout(5)->withBody($rawBody !== '' ? $rawBody : '{}', 'application/json');
             $response = match (strtoupper($method)) {
-                'GET' => Http::withHeaders($headers)->timeout(20)->get($url),
+                'GET' => Http::withHeaders($headers)->timeout(8)->connectTimeout(5)->get($url),
                 'POST' => $pending->send('POST', $url),
                 default => throw new RuntimeException('Unsupported method'),
             };
@@ -144,6 +144,17 @@ class CompanyApiClient
                 'unavailable' => true,
                 'error_code' => 'COMPANY_API_UNAVAILABLE',
                 'message' => 'Company API unavailable: '.$e->getMessage(),
+                'data' => null,
+                'status' => 0,
+            ];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [
+                'ok' => false,
+                'unavailable' => true,
+                'error_code' => 'COMPANY_API_UNAVAILABLE',
+                'message' => 'Company API request failed: '.$e->getMessage(),
                 'data' => null,
                 'status' => 0,
             ];

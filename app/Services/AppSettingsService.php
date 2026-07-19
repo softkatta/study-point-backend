@@ -86,34 +86,67 @@ class AppSettingsService
 
     public function publicPlatform(): array
     {
-        $general = $this->general();
-        $gst = $this->gst();
-        $company = $this->company();
-        $payment = $this->payment();
+        try {
+            $general = $this->general();
+            $gst = $this->gst();
+            $company = $this->company();
+            $payment = $this->payment();
 
-        return [
-            'support_email' => $general['support_email'],
-            'support_phone' => $general['support_phone'],
-            'timezone' => $general['timezone'],
-            'currency' => $general['currency'],
-            'currency_symbol' => $general['currency_symbol'],
-            'gst_rate' => (float) $gst['gst_rate'],
-            'gstin' => $gst['gstin'],
-            'company_name' => $company['trade_name'] ?: $company['legal_name'],
-            'company_phone' => $company['phone'],
-            'company_email' => $company['email'],
-            'payment_gateway' => [
-                'enabled' => (bool) ($payment['enabled'] ?? false),
-                'provider' => $payment['provider'] ?? 'razorpay',
-                'test_mode' => (bool) ($payment['test_mode'] ?? true),
-            ],
-            'biometric' => [
-                'enabled' => (bool) ($this->biometric()['enabled'] ?? false),
-                'provider' => $this->biometric()['provider'] ?? 'manual',
-            ],
-            'student_self_register' => (bool) ($this->security()['allow_student_self_register'] ?? false),
-            'require_2fa_admins' => (bool) ($this->security()['require_2fa_admins'] ?? false),
-        ];
+            return [
+                'support_email' => $general['support_email'],
+                'support_phone' => $general['support_phone'],
+                'timezone' => $general['timezone'],
+                'currency' => $general['currency'],
+                'currency_symbol' => $general['currency_symbol'],
+                'gst_rate' => (float) $gst['gst_rate'],
+                'gstin' => $gst['gstin'],
+                'company_name' => $company['trade_name'] ?: $company['legal_name'],
+                'company_phone' => $company['phone'],
+                'company_email' => $company['email'],
+                'payment_gateway' => [
+                    'enabled' => (bool) ($payment['enabled'] ?? false),
+                    'provider' => $payment['provider'] ?? 'razorpay',
+                    'test_mode' => (bool) ($payment['test_mode'] ?? true),
+                ],
+                'biometric' => [
+                    'enabled' => (bool) ($this->biometric()['enabled'] ?? false),
+                    'provider' => $this->biometric()['provider'] ?? 'manual',
+                ],
+                'student_self_register' => (bool) ($this->security()['allow_student_self_register'] ?? false),
+                'require_2fa_admins' => (bool) ($this->security()['require_2fa_admins'] ?? false),
+            ];
+        } catch (\Throwable) {
+            $general = GeneralDefaults::all();
+            $gst = GstDefaults::all();
+            $company = CompanyDefaults::all();
+            $payment = PaymentDefaults::all();
+            $biometric = BiometricDefaults::all();
+            $security = SecurityDefaults::all();
+
+            return [
+                'support_email' => $general['support_email'],
+                'support_phone' => $general['support_phone'],
+                'timezone' => $general['timezone'],
+                'currency' => $general['currency'],
+                'currency_symbol' => $general['currency_symbol'],
+                'gst_rate' => (float) ($gst['gst_rate'] ?? 18),
+                'gstin' => $gst['gstin'] ?? '',
+                'company_name' => $company['trade_name'] ?: ($company['legal_name'] ?? 'StudyPoint'),
+                'company_phone' => $company['phone'] ?? '',
+                'company_email' => $company['email'] ?? '',
+                'payment_gateway' => [
+                    'enabled' => (bool) ($payment['enabled'] ?? false),
+                    'provider' => $payment['provider'] ?? 'razorpay',
+                    'test_mode' => (bool) ($payment['test_mode'] ?? true),
+                ],
+                'biometric' => [
+                    'enabled' => (bool) ($biometric['enabled'] ?? false),
+                    'provider' => $biometric['provider'] ?? 'manual',
+                ],
+                'student_self_register' => (bool) ($security['allow_student_self_register'] ?? false),
+                'require_2fa_admins' => (bool) ($security['require_2fa_admins'] ?? false),
+            ];
+        }
     }
 
     public function invoiceDocumentMeta(): array
