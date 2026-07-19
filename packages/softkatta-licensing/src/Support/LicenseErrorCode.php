@@ -16,6 +16,7 @@ final class LicenseErrorCode
     public const INVALID_SIGNATURE = 'INVALID_SIGNATURE';
     public const EXPIRED_TIMESTAMP = 'EXPIRED_TIMESTAMP';
     public const DUPLICATE_NONCE = 'DUPLICATE_NONCE';
+    public const INVALID_API_KEY = 'INVALID_API_KEY';
     public const INVALID_INSTALL_TOKEN = 'INVALID_INSTALL_TOKEN';
     public const GRACE_EXPIRED = 'GRACE_EXPIRED';
     public const NOT_INSTALLED = 'NOT_INSTALLED';
@@ -42,6 +43,8 @@ final class LicenseErrorCode
             self::INVALID_INSTALL_TOKEN,
             self::GRACE_EXPIRED,
             self::COMPANY_API_NOT_CONFIGURED,
+            self::INVALID_SIGNATURE,
+            self::INVALID_API_KEY,
         ];
     }
 
@@ -94,6 +97,8 @@ final class LicenseErrorCode
             self::GRACE_EXPIRED => '/license/grace-expired',
             self::COMPANY_API_UNAVAILABLE => '/license/company-api-unavailable',
             self::COMPANY_API_NOT_CONFIGURED => '/license/company-api-unavailable',
+            self::INVALID_SIGNATURE => '/license/company-api-unavailable',
+            self::INVALID_API_KEY => '/license/company-api-unavailable',
             default => '/license/invalid',
         };
     }
