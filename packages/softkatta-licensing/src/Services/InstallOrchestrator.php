@@ -40,16 +40,6 @@ class InstallOrchestrator
                 && $companyConfigured
                 && \SoftKatta\Licensing\Support\LicenseErrorCode::isRemotelyRecoverable($state?->last_error_code)
             ) {
-                // #region agent log
-                if (class_exists(\App\Support\DebugAgentLog::class)) {
-                    \App\Support\DebugAgentLog::write(
-                        'InstallOrchestrator.php:status',
-                        'Refreshing SoftKatta from status() for recoverable block',
-                        ['prior_error' => $state?->last_error_code],
-                        'H3',
-                    );
-                }
-                // #endregion
                 $this->license->verify(true);
                 $state = \SoftKatta\Licensing\Models\LicenseState::query()->first();
             }

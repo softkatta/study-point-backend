@@ -31,19 +31,11 @@ use App\Http\Controllers\Api\V1\WhatsAppWebhookController;
 use App\Http\Controllers\Api\V1\PaymentWebhookController;
 use App\Http\Controllers\Api\V1\InstallController;
 use App\Http\Controllers\Api\V1\LicenseController;
-use App\Http\Controllers\Api\V1\DebugAgentLogController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::match(['get', 'post'], 'webhooks/whatsapp/meta', [WhatsAppWebhookController::class, 'meta']);
     Route::post('webhooks/payments/razorpay', [PaymentWebhookController::class, 'razorpay']);
-
-    // Temporary debug-mode log relay (session 00f2f1) — remove after verification.
-    Route::middleware('throttle:60,1')->group(function () {
-        Route::post('debug/agent-log', [DebugAgentLogController::class, 'store']);
-        Route::get('debug/agent-log', [DebugAgentLogController::class, 'index']);
-        Route::delete('debug/agent-log', [DebugAgentLogController::class, 'destroy']);
-    });
 
     // Install wizard (locked after successful installation)
     Route::prefix('install')->middleware(['throttle:30,1', 'install.not_completed'])->group(function () {

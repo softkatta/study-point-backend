@@ -25,7 +25,6 @@ return [
         'api/v1/license/activate',
         'api/v1/license/company-api',
         'api/v1/webhooks/*',
-        'api/v1/debug/agent-log',
     ],
 
     /*
