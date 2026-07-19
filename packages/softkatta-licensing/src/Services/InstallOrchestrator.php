@@ -417,6 +417,16 @@ class InstallOrchestrator
 
         Artisan::call('config:clear');
 
+        // Credentials restored via UI — clear the hard block so verify/activate can proceed.
+        try {
+            $state = \SoftKatta\Licensing\Models\LicenseState::query()->first();
+            if ($state && $state->last_error_code === \SoftKatta\Licensing\Support\LicenseErrorCode::COMPANY_API_NOT_CONFIGURED) {
+                $state->forceFill(['last_error_code' => null])->save();
+            }
+        } catch (\Throwable) {
+            // DB may be mid-install; ignore.
+        }
+
         return [
             'configured' => true,
             'company_api_url' => $companyApiUrl,

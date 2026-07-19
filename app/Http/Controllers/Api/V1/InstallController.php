@@ -94,7 +94,7 @@ class InstallController extends Controller
     {
         if (! $this->install->isCompanyApiConfigured()) {
             return ApiResponse::error(
-                'Configure SoftKatta Company API in the install wizard before activating a license.',
+                'Configure SoftKatta Company API (Install Wizard or License restore page) before activating a license.',
                 422,
                 null,
                 'COMPANY_API_NOT_CONFIGURED',

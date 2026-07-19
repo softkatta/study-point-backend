@@ -20,10 +20,11 @@ class EnsureInstalled
             return $next($request);
         }
 
-        // Install wizard + pre-install / post-install license restore activate.
+        // Install wizard + post-install SoftKatta credential / license restore.
         if (
             $request->is('api/v1/install/*')
             || $request->is('api/v1/license/activate')
+            || $request->is('api/v1/license/company-api')
             || $request->is('up')
         ) {
             return $next($request);

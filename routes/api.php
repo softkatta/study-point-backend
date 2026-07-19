@@ -53,6 +53,7 @@ Route::prefix('v1')->group(function () {
     Route::get('license/entitlements', [LicenseController::class, 'entitlements']);
     Route::post('license/verify', [LicenseController::class, 'verify']);
     Route::post('license/activate', [InstallController::class, 'activate']);
+    Route::post('license/company-api', [InstallController::class, 'companyApi'])->middleware('throttle:30,1');
     Route::prefix('auth')->group(function () {
         Route::post('login', [AuthController::class, 'login']);
         Route::post('2fa/verify', [AuthController::class, 'verifyTwoFactor']);
