@@ -24,6 +24,24 @@ class EnsureLicenseValid
             }
         }
 
+        try {
+            return $this->enforce($request, $next);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'License check failed. Try Restore access or contact SoftKatta support.',
+                'error_code' => LicenseErrorCode::INVALID_LICENSE,
+                'data' => [
+                    'redirect' => LicenseErrorCode::frontendPath(LicenseErrorCode::INVALID_LICENSE),
+                ],
+            ], 403);
+        }
+    }
+
+    protected function enforce(Request $request, Closure $next): Response
+    {
         if (! $this->license->isInstalled()) {
             return $next($request);
         }
