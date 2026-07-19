@@ -9,6 +9,8 @@ return [
     'offline_grace_days' => (int) env('SOFTKATTA_OFFLINE_GRACE_DAYS', 1),
     'verify_interval_hours' => (int) env('SOFTKATTA_VERIFY_INTERVAL_HOURS', 0),
     'verify_interval_minutes' => (int) env('SOFTKATTA_VERIFY_INTERVAL_MINUTES', 0),
+    // Parallel public GETs share one SoftKatta verify for this many seconds (avoids 429→Invalid).
+    'verify_coalesce_seconds' => (int) env('SOFTKATTA_VERIFY_COALESCE_SECONDS', 5),
     'timestamp_skew_seconds' => (int) env('SOFTKATTA_TIMESTAMP_SKEW', 300),
     'require_https' => (bool) env('SOFTKATTA_REQUIRE_HTTPS', true),
     'enabled' => (bool) env('SOFTKATTA_LICENSING_ENABLED', true),

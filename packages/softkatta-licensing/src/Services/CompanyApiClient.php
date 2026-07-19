@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
 use SoftKatta\Licensing\Support\HmacSigner;
+use SoftKatta\Licensing\Support\LicenseErrorCode;
 
 class CompanyApiClient
 {
@@ -161,6 +162,23 @@ class CompanyApiClient
         }
 
         $json = $response->json() ?? [];
+        $status = $response->status();
+
+        // SoftKatta Company routes are throttled (60/min). Homepage public GETs all force
+        // verify — a 429 must use offline grace, not be recorded as INVALID_LICENSE.
+        if ($status === 429 || $response->serverError()) {
+            return [
+                'ok' => false,
+                'unavailable' => true,
+                'error_code' => LicenseErrorCode::COMPANY_API_UNAVAILABLE,
+                'message' => $status === 429
+                    ? 'SoftKatta Company API rate limit reached. Retrying shortly.'
+                    : ('SoftKatta Company API error HTTP '.$status),
+                'data' => null,
+                'status' => $status,
+            ];
+        }
+
         $errorCode = $json['error_code'] ?? ($response->successful() ? null : 'INVALID_LICENSE');
         $message = $json['message'] ?? $response->body();
 
@@ -174,7 +192,7 @@ class CompanyApiClient
             'error_code' => $errorCode,
             'message' => $message,
             'data' => $json['data'] ?? null,
-            'status' => $response->status(),
+            'status' => $status,
         ];
     }
 

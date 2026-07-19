@@ -195,19 +195,22 @@ class LicenseService
             // (Fall through to live verify below.)
         }
 
-        // 0 = always hit SoftKatta (Admin Suspend/Activate immediate). Default 0.
-        // Positive cache only when explicitly configured — never delay Admin status changes.
+        // 0 = always prefer SoftKatta for Admin Suspend/Activate. Still coalesce parallel
+        // homepage public GETs (appearance + facilities + …) onto one SoftKatta call for a
+        // few seconds so SoftKatta's 60/min company throttle is not exhausted as INVALID_LICENSE.
         $intervalMinutes = (int) config('softkatta.verify_interval_minutes', 0);
+        $coalesceSeconds = max(0, (int) config('softkatta.verify_coalesce_seconds', 5));
         $version = (string) config('softkatta.product_version');
         $versionChanged = $state->product_version_at_verify && $state->product_version_at_verify !== $version;
 
         if (
-            ! $force
-            && $intervalMinutes > 0
-            && ! $versionChanged
+            ! $versionChanged
             && $state->last_verified_at
             && $state->last_error_code === null
-            && $state->last_verified_at->gt(now()->subMinutes($intervalMinutes))
+            && (
+                (! $force && $intervalMinutes > 0 && $state->last_verified_at->gt(now()->subMinutes($intervalMinutes)))
+                || ($coalesceSeconds > 0 && $state->last_verified_at->gt(now()->subSeconds($coalesceSeconds)))
+            )
         ) {
             return [
                 'ok' => true,
