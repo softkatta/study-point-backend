@@ -667,7 +667,11 @@ class SettingController extends Controller
 
     private function appearanceData(): array
     {
-        $data = AppearanceDefaults::merge(Setting::getSection('appearance'));
+        try {
+            $data = AppearanceDefaults::merge(Setting::getSection('appearance'));
+        } catch (\Throwable) {
+            $data = AppearanceDefaults::merge([]);
+        }
 
         if (! empty($data['logo_url'])) {
             $data['logo_url'] = MediaUrl::absolute($data['logo_url']);

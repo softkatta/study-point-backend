@@ -14,7 +14,13 @@ class ForceHttps
 
     public function handle(Request $request, Closure $next): Response
     {
-        if (! $this->security->shouldForceHttps() || $request->secure()) {
+        try {
+            $forceHttps = $this->security->shouldForceHttps();
+        } catch (\Throwable) {
+            $forceHttps = false;
+        }
+
+        if (! $forceHttps || $request->secure()) {
             return $next($request);
         }
 

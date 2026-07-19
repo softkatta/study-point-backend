@@ -15,7 +15,12 @@ class ApiRateLimitMiddleware
 
     public function handle(Request $request, Closure $next): Response
     {
-        $limit = max(30, $this->security->apiRateLimit());
+        try {
+            $limit = max(30, $this->security->apiRateLimit());
+        } catch (\Throwable) {
+            $limit = 120;
+        }
+
         $key = 'api-rate:'.($request->user()?->id ?: $request->ip());
 
         if (RateLimiter::tooManyAttempts($key, $limit)) {

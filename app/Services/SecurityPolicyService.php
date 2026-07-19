@@ -12,7 +12,13 @@ class SecurityPolicyService
 {
     public function config(): array
     {
-        return SecurityDefaults::merge(Setting::getSection('security'));
+        try {
+            return SecurityDefaults::merge(Setting::getSection('security'));
+        } catch (\Throwable) {
+            // ForceHttps / ApiRateLimit run before EnsureInstalled — never 500 the API
+            // when the settings table is briefly unreachable.
+            return SecurityDefaults::merge([]);
+        }
     }
 
     public function loginAttemptKey(string $identifier, string $ip): string
