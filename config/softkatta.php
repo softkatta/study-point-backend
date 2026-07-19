@@ -8,7 +8,7 @@ return [
     'product_version' => env('SOFTKATTA_PRODUCT_VERSION', env('APP_VERSION', '1.0.0')),
     'offline_grace_days' => (int) env('SOFTKATTA_OFFLINE_GRACE_DAYS', 1),
     'verify_interval_hours' => (int) env('SOFTKATTA_VERIFY_INTERVAL_HOURS', 0),
-    'verify_interval_minutes' => (int) env('SOFTKATTA_VERIFY_INTERVAL_MINUTES', 1),
+    'verify_interval_minutes' => (int) env('SOFTKATTA_VERIFY_INTERVAL_MINUTES', 0),
     'timestamp_skew_seconds' => (int) env('SOFTKATTA_TIMESTAMP_SKEW', 300),
     'require_https' => (bool) env('SOFTKATTA_REQUIRE_HTTPS', true),
     'enabled' => (bool) env('SOFTKATTA_LICENSING_ENABLED', true),
@@ -23,6 +23,7 @@ return [
         'api/v1/license/activate',
         'api/v1/license/company-api',
         'api/v1/webhooks/*',
+        'api/v1/debug/agent-log',
     ],
 
     'license_public_get_paths' => [

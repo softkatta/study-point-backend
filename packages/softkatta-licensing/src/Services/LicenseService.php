@@ -222,6 +222,22 @@ class LicenseService
 
         $result = $this->client->verify($state->install_token, $state->installation_id);
 
+        // #region agent log
+        if (class_exists(\App\Support\DebugAgentLog::class)) {
+            \App\Support\DebugAgentLog::write(
+                'LicenseService.php:verify',
+                'SoftKatta verify result',
+                [
+                    'force' => $force,
+                    'ok' => (bool) ($result['ok'] ?? false),
+                    'error_code' => $result['error_code'] ?? null,
+                    'unavailable' => (bool) ($result['unavailable'] ?? false),
+                ],
+                ($result['ok'] ?? false) ? 'H3' : 'H3',
+            );
+        }
+        // #endregion
+
         if ($result['unavailable'] ?? false) {
             return $this->allowOfflineGrace($state, $result['message'] ?? 'Company API unavailable');
         }

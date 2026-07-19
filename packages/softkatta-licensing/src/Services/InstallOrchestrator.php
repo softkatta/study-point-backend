@@ -30,8 +30,31 @@ class InstallOrchestrator
             $installed = $this->license->isInstalled();
             $state = \SoftKatta\Licensing\Models\LicenseState::query()->first();
             $hasToken = filled($state?->install_token);
-            $hardBlocked = \SoftKatta\Licensing\Support\LicenseErrorCode::isHardFailure($state?->last_error_code);
             $companyConfigured = $this->isCompanyApiConfigured();
+
+            // status() is license-exempt — force SoftKatta when Admin may have Activated/Suspended
+            // so SPA Invalid/Suspended pages and InstallGate see fresh last_error_code.
+            if (
+                $installed
+                && $hasToken
+                && $companyConfigured
+                && \SoftKatta\Licensing\Support\LicenseErrorCode::isRemotelyRecoverable($state?->last_error_code)
+            ) {
+                // #region agent log
+                if (class_exists(\App\Support\DebugAgentLog::class)) {
+                    \App\Support\DebugAgentLog::write(
+                        'InstallOrchestrator.php:status',
+                        'Refreshing SoftKatta from status() for recoverable block',
+                        ['prior_error' => $state?->last_error_code],
+                        'H3',
+                    );
+                }
+                // #endregion
+                $this->license->verify(true);
+                $state = \SoftKatta\Licensing\Models\LicenseState::query()->first();
+            }
+
+            $hardBlocked = \SoftKatta\Licensing\Support\LicenseErrorCode::isHardFailure($state?->last_error_code);
             // Local install_token alone is not enough — SoftKatta Product Integration credentials must exist.
             $hasLicense = $hasToken && ! $hardBlocked && $companyConfigured;
             if ($installed && $hasToken && ! $companyConfigured) {
