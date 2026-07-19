@@ -28,14 +28,17 @@ class ServerFingerprintService
 
     public function currentDomain(): string
     {
-        // Explicit override for SoftKatta Admin domain matching.
         $bound = $this->hostFromUrl((string) config('softkatta.bound_domain', ''));
         if ($bound !== null && ! $this->isLoopbackHost($bound)) {
             return strtolower($this->stripPort($bound));
         }
 
-        // Prefer public frontend host (e.g. study-point.softkatta.in) over API host
-        // (e.g. study-api.softkatta.in). SoftKatta Admin usually lists the SPA domain.
+        // Browser SPA origin (study-point / kinder) — preferred over API host.
+        $originHost = $this->hostFromRequestOrigin();
+        if ($originHost !== null && ! $this->isLoopbackHost($originHost)) {
+            return strtolower($this->stripPort($originHost));
+        }
+
         $frontendHost = $this->hostFromUrl((string) (
             config('softkatta.frontend_url')
             ?: env('FRONTEND_URL', '')
@@ -48,16 +51,8 @@ class ServerFingerprintService
         $requestHost = (string) request()->getHost();
         $appUrlHost = $this->hostFromUrl((string) config('app.url'));
 
-        // Prefer the live public request host when it differs from APP_URL.
         if ($requestHost !== '' && ! $this->isLoopbackHost($requestHost)) {
-            $request = strtolower($this->stripPort($requestHost));
-            $configured = $appUrlHost !== null ? strtolower($this->stripPort($appUrlHost)) : null;
-
-            if ($configured === null || $this->isLoopbackHost($configured) || $configured === $request) {
-                return $request;
-            }
-
-            return $request;
+            return strtolower($this->stripPort($requestHost));
         }
 
         if ($appUrlHost !== null && ! $this->isLoopbackHost($appUrlHost)) {
@@ -73,6 +68,23 @@ class ServerFingerprintService
         }
 
         return 'localhost';
+    }
+
+    private function hostFromRequestOrigin(): ?string
+    {
+        $request = request();
+        foreach (['Origin', 'Referer'] as $header) {
+            $value = trim((string) $request->header($header, ''));
+            if ($value === '') {
+                continue;
+            }
+            $host = $this->hostFromUrl($value);
+            if ($host !== null && $host !== '') {
+                return $host;
+            }
+        }
+
+        return null;
     }
 
     private function hostFromUrl(string $configured): ?string
