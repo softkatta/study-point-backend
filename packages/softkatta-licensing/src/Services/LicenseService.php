@@ -179,8 +179,9 @@ class LicenseService
         }
 
         if (LicenseErrorCode::isHardFailure($state->last_error_code) && ! $force) {
-            // Suspend/disable can be cleared by SoftKatta Admin Activate — re-check online,
-            // but throttle so every public GET does not stampede SoftKatta (Hostinger timeouts → 500).
+            // Admin Suspend / Revoke / Expire must re-check SoftKatta immediately when forced,
+            // and on the next public request when not forced — never cache "still blocked"
+            // while Admin may have Activated again.
             if (! LicenseErrorCode::isRemotelyRecoverable($state->last_error_code)) {
                 return [
                     'ok' => false,
@@ -189,22 +190,14 @@ class LicenseService
                 ];
             }
 
-            $recheckMinutes = max(1, (int) config('softkatta.verify_interval_minutes', 1));
-            if (
-                $state->last_verified_at
-                && $state->last_verified_at->gt(now()->subMinutes($recheckMinutes))
-            ) {
-                return [
-                    'ok' => false,
-                    'error_code' => $state->last_error_code,
-                    'message' => 'License access is blocked.',
-                    'from_cache' => true,
-                ];
-            }
+            // Remotely recoverable (SUSPENDED / PRODUCT_DISABLED / EXPIRED / INVALID):
+            // Always hit SoftKatta so Admin Activate takes effect on the next product request.
+            // (Fall through to live verify below.)
         }
 
-        // 0 = always hit SoftKatta (fast Suspend). Default 1 minute for public traffic.
-        $intervalMinutes = (int) config('softkatta.verify_interval_minutes', 1);
+        // 0 = always hit SoftKatta (Admin Suspend/Activate immediate). Default 0.
+        // Positive cache only when explicitly configured — never delay Admin status changes.
+        $intervalMinutes = (int) config('softkatta.verify_interval_minutes', 0);
         $version = (string) config('softkatta.product_version');
         $versionChanged = $state->product_version_at_verify && $state->product_version_at_verify !== $version;
 
@@ -559,49 +552,44 @@ class LicenseService
         $message = $result['message'] ?? 'License verification failed.';
 
         // Concurrent public GETs can finish SoftKatta reject AFTER Restore already succeeded.
-        // Never overwrite a fresh healthy session with a stale failure (causes Invalid License loop).
-        try {
-            $state->refresh();
-        } catch (\Throwable) {
-            // continue with in-memory state
-        }
+        // Only ignore token-rotation races — never ignore Admin Suspend / Revoke / Expire.
+        $adminRemoteBlocks = [
+            LicenseErrorCode::SUSPENDED_LICENSE,
+            LicenseErrorCode::REVOKED_LICENSE,
+            LicenseErrorCode::EXPIRED_SUBSCRIPTION,
+            LicenseErrorCode::PRODUCT_DISABLED,
+            LicenseErrorCode::DOMAIN_NOT_AUTHORIZED,
+            LicenseErrorCode::TENANT_DOMAINS_REQUIRED,
+            LicenseErrorCode::UNSUPPORTED_VERSION,
+            LicenseErrorCode::SERVER_VERIFICATION_FAILED,
+        ];
 
-        if (
-            $state->last_error_code === null
-            && filled($state->install_token)
-            && $state->last_verified_at
-            && $state->last_verified_at->gt(now()->subSeconds(60))
-        ) {
-            return [
-                'ok' => true,
-                'from_cache' => true,
-                'message' => 'License session was restored concurrently; ignoring stale SoftKatta failure.',
-                'data' => [
-                    'modules' => $state->modules_cache ?? [],
-                    'limits' => $state->limits_cache ?? [],
-                    'bound_domain' => $state->bound_domain,
-                ],
-            ];
-        }
+        if (! in_array($code, $adminRemoteBlocks, true)) {
+            try {
+                $state->refresh();
+            } catch (\Throwable) {
+                // continue with in-memory state
+            }
 
-        // Stale verify used an old install_token while Restore minted a new one.
-        if (
-            filled($state->install_token)
-            && $state->last_error_code === null
-            && ($result['error_code'] ?? '') === LicenseErrorCode::INVALID_INSTALL_TOKEN
-            && $state->updated_at
-            && $state->updated_at->gt(now()->subSeconds(60))
-        ) {
-            return [
-                'ok' => true,
-                'from_cache' => true,
-                'message' => 'Ignoring stale install-token failure after a recent license update.',
-                'data' => [
-                    'modules' => $state->modules_cache ?? [],
-                    'limits' => $state->limits_cache ?? [],
-                    'bound_domain' => $state->bound_domain,
-                ],
-            ];
+            // Stale verify used an old install_token while Restore minted a new one.
+            if (
+                ($code === LicenseErrorCode::INVALID_INSTALL_TOKEN || $code === LicenseErrorCode::INVALID_LICENSE)
+                && $state->last_error_code === null
+                && filled($state->install_token)
+                && $state->updated_at
+                && $state->updated_at->gt(now()->subSeconds(60))
+            ) {
+                return [
+                    'ok' => true,
+                    'from_cache' => true,
+                    'message' => 'Ignoring stale install-token failure after a recent license update.',
+                    'data' => [
+                        'modules' => $state->modules_cache ?? [],
+                        'limits' => $state->limits_cache ?? [],
+                        'bound_domain' => $state->bound_domain,
+                    ],
+                ];
+            }
         }
 
         $payload = [

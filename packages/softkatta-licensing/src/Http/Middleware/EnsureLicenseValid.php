@@ -81,12 +81,11 @@ class EnsureLicenseValid
         }
 
         // After SoftKatta suspend/revoke, block public marketing APIs too.
-        // SoftKatta Admin Activate may revive sessions — re-check, but do not force SoftKatta
-        // on every public GET (verify() already throttles recoverable hard blocks).
+        // Always force SoftKatta when hard-blocked so Admin Activate restores on the next request.
         if ($this->license->isHardBlocked()) {
             $code = $this->license->state()->last_error_code ?: LicenseErrorCode::INVALID_LICENSE;
 
-            $result = $this->license->verify(false);
+            $result = $this->license->verify(true);
             if ($result['ok'] ?? false) {
                 return null;
             }
@@ -110,7 +109,8 @@ class EnsureLicenseValid
             ], 403);
         }
 
-        // Public marketing GETs still require a live SoftKatta check (short cache) so Suspend stops the site.
+        // Public marketing GETs always re-check SoftKatta when interval is 0 (default)
+        // so Admin Suspend stops the site on the next page load.
         $isPublicGet = false;
         if ($request->isMethod('get')) {
             foreach ((array) config('softkatta.license_public_get_paths', []) as $pattern) {
@@ -124,10 +124,11 @@ class EnsureLicenseValid
         $force = $request->is('api/v1/auth/login')
             || $request->is('api/v1/license/verify')
             || (bool) $request->bearerToken()
-            || $request->is('api/v1/auth/*');
+            || $request->is('api/v1/auth/*')
+            // Public GETs always hit SoftKatta so Admin Suspend/Activate is immediate.
+            || $isPublicGet;
 
         $needsCheck = $force
-            || $isPublicGet
             || $request->isMethod('post')
             || $request->isMethod('put')
             || $request->isMethod('patch')
@@ -146,7 +147,7 @@ class EnsureLicenseValid
             ], 403);
         }
 
-        // Authenticated / login always online; public uses short cache (verify_interval_minutes).
+        // Auth + public marketing paths force SoftKatta (Admin status changes apply on next request).
         $result = $this->license->verify($force);
 
         if (! ($result['ok'] ?? false)) {
