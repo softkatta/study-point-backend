@@ -378,6 +378,22 @@ class InstallOrchestrator
         if ($apiSecret === '') {
             throw new RuntimeException('SoftKatta API secret is required.');
         }
+        if (
+            str_contains($publicApiKey, '@')
+            || ! preg_match('/^sk_pub_[a-z0-9]+$/i', $publicApiKey)
+        ) {
+            throw new RuntimeException(
+                'Public API Key must look like sk_pub_... from SoftKatta Admin → Product Integrations. Do not enter your SoftKatta login email.'
+            );
+        }
+        if (
+            str_contains($apiSecret, '@')
+            || ! preg_match('/^sk_sec_[a-z0-9]+$/i', $apiSecret)
+        ) {
+            throw new RuntimeException(
+                'API Secret must look like sk_sec_... from SoftKatta Admin → Product Integrations → Reveal. Do not enter your SoftKatta password.'
+            );
+        }
         if ($productSlug === '') {
             throw new RuntimeException('Product slug is required.');
         }
