@@ -31,17 +31,24 @@ class ServerFingerprintService
         $requestHost = (string) request()->getHost();
         $appUrlHost = $this->hostFromAppUrl();
 
-        // 1) Non-loopback APP_URL wins — wizard writes the public site URL (not the API host).
+        // Prefer the live public request host when it differs from APP_URL.
+        // Prevents Study Point APP_URL from poisoning a Kindergarten install (and vice versa).
+        if ($requestHost !== '' && ! $this->isLoopbackHost($requestHost)) {
+            $request = strtolower($this->stripPort($requestHost));
+            $configured = $appUrlHost !== null ? strtolower($this->stripPort($appUrlHost)) : null;
+
+            if ($configured === null || $this->isLoopbackHost($configured) || $configured === $request) {
+                return $request;
+            }
+
+            // Different public hosts: request wins for activate/verify against SoftKatta Admin domains.
+            return $request;
+        }
+
         if ($appUrlHost !== null && ! $this->isLoopbackHost($appUrlHost)) {
             return strtolower($this->stripPort($appUrlHost));
         }
 
-        // 2) Before APP_URL is fixed, use the live request host when it is public.
-        if ($requestHost !== '' && ! $this->isLoopbackHost($requestHost)) {
-            return strtolower($this->stripPort($requestHost));
-        }
-
-        // 3) Fall back to whatever we have (often localhost right after migrate/seed).
         if ($appUrlHost !== null && $appUrlHost !== '') {
             return strtolower($this->stripPort($appUrlHost));
         }

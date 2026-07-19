@@ -9,6 +9,7 @@ final class LicenseErrorCode
     public const SUSPENDED_LICENSE = 'SUSPENDED_LICENSE';
     public const REVOKED_LICENSE = 'REVOKED_LICENSE';
     public const DOMAIN_NOT_AUTHORIZED = 'DOMAIN_NOT_AUTHORIZED';
+    public const TENANT_DOMAINS_REQUIRED = 'TENANT_DOMAINS_REQUIRED';
     public const PRODUCT_DISABLED = 'PRODUCT_DISABLED';
     public const UNSUPPORTED_VERSION = 'UNSUPPORTED_VERSION';
     public const SERVER_VERIFICATION_FAILED = 'SERVER_VERIFICATION_FAILED';
@@ -19,8 +20,6 @@ final class LicenseErrorCode
     public const GRACE_EXPIRED = 'GRACE_EXPIRED';
     public const NOT_INSTALLED = 'NOT_INSTALLED';
     public const COMPANY_API_UNAVAILABLE = 'COMPANY_API_UNAVAILABLE';
-    public const COMPANY_API_NOT_CONFIGURED = 'COMPANY_API_NOT_CONFIGURED';
-    public const INVALID_API_KEY = 'INVALID_API_KEY';
 
     /**
      * Errors that must stop the product immediately (no offline/cache bypass).
@@ -35,14 +34,12 @@ final class LicenseErrorCode
             self::SUSPENDED_LICENSE,
             self::REVOKED_LICENSE,
             self::DOMAIN_NOT_AUTHORIZED,
+            self::TENANT_DOMAINS_REQUIRED,
             self::PRODUCT_DISABLED,
             self::UNSUPPORTED_VERSION,
             self::SERVER_VERIFICATION_FAILED,
             self::INVALID_INSTALL_TOKEN,
             self::GRACE_EXPIRED,
-            // SoftKatta Admin Product Integration missing / credentials cleared.
-            self::COMPANY_API_NOT_CONFIGURED,
-            self::INVALID_API_KEY,
         ];
     }
 
@@ -87,14 +84,13 @@ final class LicenseErrorCode
             self::SUSPENDED_LICENSE => '/license/suspended',
             self::REVOKED_LICENSE => '/license/invalid',
             self::DOMAIN_NOT_AUTHORIZED => '/license/domain-not-authorized',
+            self::TENANT_DOMAINS_REQUIRED => '/license/domain-not-authorized',
             self::PRODUCT_DISABLED => '/license/product-disabled',
             self::UNSUPPORTED_VERSION => '/license/unsupported-version',
             self::SERVER_VERIFICATION_FAILED => '/license/server-verification-failed',
             self::INVALID_INSTALL_TOKEN => '/license/invalid-install-token',
             self::GRACE_EXPIRED => '/license/grace-expired',
             self::COMPANY_API_UNAVAILABLE => '/license/company-api-unavailable',
-            self::COMPANY_API_NOT_CONFIGURED => '/license/company-api-unavailable',
-            self::INVALID_API_KEY => '/license/company-api-unavailable',
             default => '/license/invalid',
         };
     }
