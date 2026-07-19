@@ -12,6 +12,9 @@ return [
     'timestamp_skew_seconds' => (int) env('SOFTKATTA_TIMESTAMP_SKEW', 300),
     'require_https' => (bool) env('SOFTKATTA_REQUIRE_HTTPS', true),
     'enabled' => (bool) env('SOFTKATTA_LICENSING_ENABLED', true),
+    // Public site host SoftKatta Admin should match (SPA). Falls back to FRONTEND_URL.
+    'frontend_url' => env('SOFTKATTA_FRONTEND_URL', env('FRONTEND_URL', '')),
+    'bound_domain' => env('SOFTKATTA_BOUND_DOMAIN', ''),
 
     'license_exempt_paths' => [
         'api/v1/install/*',
