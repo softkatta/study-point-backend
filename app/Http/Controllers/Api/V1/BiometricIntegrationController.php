@@ -137,7 +137,7 @@ class BiometricIntegrationController extends Controller
         $this->assertStudentBranch($request, $student);
 
         if (! $this->smartOffice->isActive()) {
-            return ApiResponse::success(null, 'Student blocked locally (SmartOffice not active).');
+            return ApiResponse::error('SmartOffice is not active. Enable it in Settings → Biometric API.', 422);
         }
 
         $code = SmartOfficeService::employeeCode($student->student_code);
