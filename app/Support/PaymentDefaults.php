@@ -34,7 +34,7 @@ class PaymentDefaults
     public static function validationRules(): array
     {
         return [
-            'provider' => ['required', 'in:razorpay,stripe,payu,cashfree,phonepe'],
+            'provider' => ['required', 'in:razorpay'],
             'enabled' => ['nullable', 'boolean'],
             'test_mode' => ['nullable', 'boolean'],
             'razorpay_key_id' => ['nullable', 'string', 'max:200'],

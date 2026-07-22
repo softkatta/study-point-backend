@@ -31,9 +31,16 @@ class AuditRequestMiddleware
 
         $segments = explode('/', $path);
         $resource = $segments[2] ?? ($segments[1] ?? 'api');
+        $resourceId = null;
+        foreach ($segments as $segment) {
+            if (ctype_digit($segment)) {
+                $resourceId = (int) $segment;
+                break;
+            }
+        }
         $action = strtolower($request->method()).'.'.$resource;
 
-        $this->audit->log($action, $user, $resource, null, $request, [
+        $this->audit->log($action, $user, $resource, $resourceId, $request, [
             'path' => '/'.$path,
             'status' => $response->getStatusCode(),
         ]);

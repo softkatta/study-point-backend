@@ -97,13 +97,7 @@ class PaymentGatewayService
         return match ($provider) {
             'razorpay' => $this->createRazorpayOrder($config, $amountPaise, $receipt, $currency),
             'stripe' => $this->createStripeIntent($config, $amountPaise, $currency),
-            default => [
-                'provider' => $provider,
-                'amount' => $amount,
-                'currency' => $currency,
-                'receipt' => $receipt,
-                'message' => 'Use provider SDK on frontend; credentials are configured.',
-            ],
+            default => throw new \RuntimeException(ucfirst((string) $provider).' checkout is not implemented. Use Razorpay.'),
         };
     }
 

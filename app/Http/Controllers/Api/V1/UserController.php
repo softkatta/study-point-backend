@@ -15,6 +15,7 @@ use App\Support\Roles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -190,9 +191,12 @@ class UserController extends Controller
             return ApiResponse::error('Use Edit User to change the Super Admin password.', 422);
         }
 
-        $user->update(['password' => Hash::make('demo1234')]);
+        $plain = Str::password(12);
+        $user->update(['password' => Hash::make($plain)]);
 
-        return ApiResponse::success(null, 'Password reset to demo1234');
+        return ApiResponse::success([
+            'temporary_password' => $plain,
+        ], 'Password reset. Share the temporary password securely — it is shown only once.');
     }
 
     public function changeRole(Request $request, User $user): JsonResponse
