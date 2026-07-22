@@ -477,6 +477,11 @@ class LicenseService
     public function limit(string $key, ?int $default = null): ?int
     {
         $limits = $this->state()->limits_cache ?? [];
+
+        if ($key === 'max_users' && ! array_key_exists('max_users', $limits) && array_key_exists('max_staff', $limits)) {
+            return (int) $limits['max_staff'];
+        }
+
         if (! array_key_exists($key, $limits)) {
             return $default;
         }
