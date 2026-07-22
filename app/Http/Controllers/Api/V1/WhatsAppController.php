@@ -80,6 +80,17 @@ class WhatsAppController extends Controller
             $query->where('status', $request->status);
         }
 
+        if ($request->filled('phone')) {
+            $digits = preg_replace('/\D+/', '', (string) $request->input('phone')) ?: '';
+            if ($digits !== '') {
+                $tail = strlen($digits) > 10 ? substr($digits, -10) : $digits;
+                $query->where(function ($q) use ($digits, $tail) {
+                    $q->where('to_phone', 'like', '%'.$digits.'%')
+                        ->orWhere('to_phone', 'like', '%'.$tail.'%');
+                });
+            }
+        }
+
         return ApiResponse::success($query->paginate($request->integer('per_page', 25)));
     }
 

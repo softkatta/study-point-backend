@@ -34,6 +34,7 @@ class StudentResource extends JsonResource
             'expiry' => $this->expiry?->toDateString(),
             'subscriptions' => SubscriptionResource::collection($this->whenLoaded('subscriptions')),
             'portal_ready' => (bool) $this->user_id,
+            'user_id' => $this->user_id,
             'payment_received' => $this->hasReceivedPayment(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
