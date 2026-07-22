@@ -223,7 +223,7 @@ class LicenseService
             ];
         }
 
-        $result = $this->client->verify($state->install_token, $state->installation_id);
+        $result = $this->client->verify($state->install_token, $state->installation_id, $this->seatUsagePayload());
 
         if ($result['unavailable'] ?? false) {
             return $this->allowOfflineGrace($state, $result['message'] ?? 'Company API unavailable');
@@ -233,7 +233,7 @@ class LicenseService
             $refreshed = $this->refreshToken();
             if ($refreshed['ok'] ?? false) {
                 $state = $this->state();
-                $result = $this->client->verify($state->install_token, $state->installation_id);
+                $result = $this->client->verify($state->install_token, $state->installation_id, $this->seatUsagePayload());
             } elseif (
                 filled($state->license_key)
                 && ($refreshed['error_code'] ?? '') === LicenseErrorCode::INVALID_INSTALL_TOKEN
@@ -243,7 +243,7 @@ class LicenseService
                 $reactivated = $this->attemptAutoReactivate($state);
                 if ($reactivated['ok'] ?? false) {
                     $state = $this->state();
-                    $result = $this->client->verify($state->install_token, $state->installation_id);
+                    $result = $this->client->verify($state->install_token, $state->installation_id, $this->seatUsagePayload());
                 } else {
                     return $this->recordHardFailure($state, $reactivated);
                 }
@@ -322,7 +322,7 @@ class LicenseService
             ];
         }
 
-        $result = $this->client->heartbeat($state->install_token, $state->installation_id);
+        $result = $this->client->heartbeat($state->install_token, $state->installation_id, $this->seatUsagePayload());
 
         if ($result['unavailable'] ?? false) {
             return $this->allowOfflineGrace($state, $result['message'] ?? 'Company API unavailable');
@@ -349,7 +349,7 @@ class LicenseService
             $reactivated = $this->attemptAutoReactivate($state);
             if ($reactivated['ok'] ?? false) {
                 $state = $this->state();
-                $retry = $this->client->heartbeat($state->install_token, $state->installation_id);
+                $retry = $this->client->heartbeat($state->install_token, $state->installation_id, $this->seatUsagePayload());
                 if ($retry['ok'] ?? false) {
                     $data = $retry['data'] ?? [];
                     $state->forceFill([
@@ -617,5 +617,36 @@ class LicenseService
             'message' => $message,
             'data' => $result['data'] ?? null,
         ];
+    }
+
+    /**
+     * @return array{users?: int, students?: int}
+     */
+    private function seatUsagePayload(): array
+    {
+        $resolver = config('softkatta.seat_usage_resolver');
+        if (! is_callable($resolver)) {
+            return [];
+        }
+
+        try {
+            $usage = $resolver();
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if (! is_array($usage)) {
+            return [];
+        }
+
+        $payload = [];
+        if (array_key_exists('users', $usage)) {
+            $payload['users'] = max(0, (int) $usage['users']);
+        }
+        if (array_key_exists('students', $usage)) {
+            $payload['students'] = max(0, (int) $usage['students']);
+        }
+
+        return $payload;
     }
 }

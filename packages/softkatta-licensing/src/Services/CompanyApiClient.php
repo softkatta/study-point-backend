@@ -23,9 +23,11 @@ class CompanyApiClient
         return $this->request('POST', '/activate', $body, includeInstallToken: false, installationId: $installationId);
     }
 
-    public function verify(string $installToken, string $installationId): array
+    public function verify(string $installToken, string $installationId, array $usage = []): array
     {
-        return $this->request('POST', '/verify', [], $installToken, $installationId);
+        $body = $usage === [] ? [] : ['usage' => $usage];
+
+        return $this->request('POST', '/verify', $body, $installToken, $installationId);
     }
 
     public function refreshToken(string $refreshToken, string $installationId): array
@@ -50,9 +52,11 @@ class CompanyApiClient
         return $this->request('GET', '/addons', [], $installToken, $installationId);
     }
 
-    public function heartbeat(string $installToken, string $installationId): array
+    public function heartbeat(string $installToken, string $installationId, array $usage = []): array
     {
-        return $this->request('POST', '/heartbeat', [], $installToken, $installationId);
+        $body = $usage === [] ? [] : ['usage' => $usage];
+
+        return $this->request('POST', '/heartbeat', $body, $installToken, $installationId);
     }
 
     private function request(

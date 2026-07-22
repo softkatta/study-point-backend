@@ -19,6 +19,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureOutboundHttp();
+        $this->configureSoftKattaSeatUsage();
 
         Gate::before(function ($user, $ability) {
             return $user?->hasRole(Roles::SUPER_ADMIN) ? true : null;
@@ -34,6 +35,18 @@ class AppServiceProvider extends ServiceProvider
         } catch (\Throwable) {
             // DB may be unavailable during install/migrate
         }
+    }
+
+    private function configureSoftKattaSeatUsage(): void
+    {
+        config([
+            'softkatta.seat_usage_resolver' => static function (): array {
+                return [
+                    'users' => \App\Models\User::query()->count(),
+                    'students' => \App\Models\Student::query()->count(),
+                ];
+            },
+        ]);
     }
 
     private function configureOutboundHttp(): void
