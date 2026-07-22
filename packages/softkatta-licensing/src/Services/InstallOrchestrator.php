@@ -208,6 +208,11 @@ class InstallOrchestrator
                 'ok' => is_writable(base_path('.env')) || is_writable(base_path()),
                 'value' => base_path('.env'),
             ],
+            'app_key' => [
+                'label' => 'APP_KEY set',
+                'ok' => filled(config('app.key')),
+                'value' => filled(config('app.key')) ? 'set' : 'missing — run: php artisan key:generate',
+            ],
         ];
 
         return [
@@ -536,13 +541,15 @@ class InstallOrchestrator
             throw new RuntimeException('.env file not found.');
         }
 
-        $content = File::get($path);
+        // Normalize CRLF so Windows .env lines match /^KEY=/m reliably.
+        $content = str_replace("\r\n", "\n", File::get($path));
         foreach ($values as $key => $value) {
             $escaped = $this->envValue((string) $value);
+            // Replace every occurrence so duplicate keys (from prior appends) stay in sync.
             if (preg_match("/^{$key}=.*/m", $content)) {
                 $content = preg_replace("/^{$key}=.*/m", "{$key}={$escaped}", $content);
             } else {
-                $content .= "\n{$key}={$escaped}";
+                $content = rtrim($content, "\n")."\n{$key}={$escaped}\n";
             }
         }
         File::put($path, $content);
