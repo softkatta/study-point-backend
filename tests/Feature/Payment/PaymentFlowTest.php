@@ -62,7 +62,7 @@ class PaymentFlowTest extends TestCase
         ]);
     }
 
-    public function test_demo_online_payment_confirm_auto_approves_admission(): void
+    public function test_demo_online_payment_confirm_is_rejected(): void
     {
         $branch = Branch::first();
         $plan = Plan::where('slug', 'monthly')->first();
@@ -83,18 +83,13 @@ class PaymentFlowTest extends TestCase
             'demo' => true,
         ]);
 
-        $response->assertOk()
-            ->assertJsonPath('data.payment.status', 'paid')
-            ->assertJsonPath('data.auto_approved', true)
-            ->assertJsonPath('data.student.student_code', fn ($v) => str_starts_with($v, 'SP'));
+        $response->assertStatus(422);
 
         $this->assertDatabaseHas('admissions', [
             'id' => $admissionId,
-            'payment_status' => 'paid',
-            'status' => 'active',
+            'payment_status' => 'pending',
         ]);
-        $this->assertDatabaseHas('students', ['email' => 'online@test.com', 'status' => 'active']);
-        $this->assertDatabaseHas('subscriptions', ['plan_name' => 'Monthly Pass', 'status' => 'active']);
+        $this->assertDatabaseMissing('students', ['email' => 'online@test.com']);
     }
 
     public function test_online_payment_cannot_be_manually_verified(): void

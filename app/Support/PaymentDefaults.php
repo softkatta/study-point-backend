@@ -9,7 +9,7 @@ class PaymentDefaults
         return [
             'provider' => 'razorpay',
             'enabled' => false,
-            'test_mode' => true,
+            'test_mode' => false,
             'razorpay_key_id' => '',
             'razorpay_key_secret' => '',
             'razorpay_webhook_secret' => '',

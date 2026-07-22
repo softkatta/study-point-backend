@@ -187,28 +187,25 @@ class PaymentController extends Controller
             'demo' => ['nullable', 'boolean'],
         ]);
 
-        $demo = (bool) ($data['demo'] ?? false);
-        $config = $this->gateway->checkoutConfig();
+        if (! empty($data['demo'])) {
+            return ApiResponse::error('Demo payment is disabled. Configure Razorpay or collect payment at the branch.', 422);
+        }
 
-        if (! $demo) {
-            if (empty($data['razorpay_order_id']) || empty($data['razorpay_payment_id']) || empty($data['razorpay_signature'])) {
-                return ApiResponse::error('Payment confirmation details are required.', 422);
-            }
+        if (empty($data['razorpay_order_id']) || empty($data['razorpay_payment_id']) || empty($data['razorpay_signature'])) {
+            return ApiResponse::error('Payment confirmation details are required.', 422);
+        }
 
-            if (! $this->gateway->verifyRazorpaySignature(
-                $data['razorpay_order_id'],
-                $data['razorpay_payment_id'],
-                $data['razorpay_signature'],
-            )) {
-                return ApiResponse::error('Invalid payment signature.', 422);
-            }
-        } elseif (! ($config['test_mode'] ?? true)) {
-            return ApiResponse::error('Demo payment is only allowed in test mode.', 422);
+        if (! $this->gateway->verifyRazorpaySignature(
+            $data['razorpay_order_id'],
+            $data['razorpay_payment_id'],
+            $data['razorpay_signature'],
+        )) {
+            return ApiResponse::error('Invalid payment signature.', 422);
         }
 
         $updated = $this->payments->markPaid($payment, [
             'method' => $payment->method ?? 'UPI',
-            'transaction_id' => $data['razorpay_payment_id'] ?? ('DEMO-'.$payment->payment_code),
+            'transaction_id' => $data['razorpay_payment_id'],
         ]);
 
         return $this->paymentConfirmResponse($updated, $request);
