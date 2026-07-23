@@ -7,6 +7,7 @@ use App\Support\ApiResponse;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use DateTimeInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnforceSessionTimeout
@@ -28,7 +29,8 @@ class EnforceSessionTimeout
         }
 
         $cacheKey = "token_activity:{$token->id}";
-        $seedTimestamp = ($token->last_used_at ?? $token->created_at)?->timestamp;
+        $seedTimestamp = $this->extractTimestamp($token->last_used_at)
+            ?? $this->extractTimestamp($token->created_at);
         $cachedTimestamp = Cache::get($cacheKey);
         $lastActivityTs = is_numeric($cachedTimestamp)
             ? (int) $cachedTimestamp
@@ -46,5 +48,24 @@ class EnforceSessionTimeout
         Cache::put($cacheKey, now()->timestamp, now()->addDays(30));
 
         return $next($request);
+    }
+
+    private function extractTimestamp(mixed $value): ?int
+    {
+        if ($value instanceof DateTimeInterface) {
+            return $value->getTimestamp();
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        if (is_string($value)) {
+            $parsed = strtotime($value);
+
+            return $parsed === false ? null : $parsed;
+        }
+
+        return null;
     }
 }

@@ -20,13 +20,18 @@ return Application::configure(basePath: dirname(__DIR__))
         // Hostinger / Cloudflare: use the public Host header, not the internal proxy host.
         $middleware->trustProxies(at: '*');
 
-        $middleware->api(prepend: [
+        $apiPrepend = [
             \App\Http\Middleware\ForceHttps::class,
             \App\Http\Middleware\ApiRateLimitMiddleware::class,
             \App\Http\Middleware\SetApplicationTimezone::class,
-            EnsureInstalled::class,
-            EnsureLicenseValid::class,
-        ]);
+        ];
+
+        if (env('APP_ENV') !== 'testing') {
+            $apiPrepend[] = EnsureInstalled::class;
+            $apiPrepend[] = EnsureLicenseValid::class;
+        }
+
+        $middleware->api(prepend: $apiPrepend);
         $middleware->alias([
             'ip.whitelist' => \App\Http\Middleware\EnforceIpWhitelist::class,
             'session.timeout' => \App\Http\Middleware\EnforceSessionTimeout::class,
