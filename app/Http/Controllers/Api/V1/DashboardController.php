@@ -8,15 +8,20 @@ use App\Models\Branch;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Models\Subscription;
+use App\Models\User;
 use App\Services\FinancialSummaryService;
 use App\Support\ApiResponse;
 use App\Support\BranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use SoftKatta\Licensing\Services\LicenseService;
 
 class DashboardController extends Controller
 {
-    public function __construct(private FinancialSummaryService $financialSummary) {}
+    public function __construct(
+        private FinancialSummaryService $financialSummary,
+        private LicenseService $license,
+    ) {}
 
     public function stats(Request $request): JsonResponse
     {
@@ -65,8 +70,25 @@ class DashboardController extends Controller
                 'net_profit' => $financial['net_profit'],
             ],
             'financial' => $financial,
+            // License limits apply to the whole installation, not only the selected branch.
+            'plan_usage' => [
+                'users' => $this->planUsage('max_users', User::query()->count()),
+                'students' => $this->planUsage('max_students', Student::query()->count()),
+            ],
             'branch_id' => $branchId,
         ]);
+    }
+
+    /** @return array{limit: int|null, total: int, remaining: int|null} */
+    private function planUsage(string $limitKey, int $total): array
+    {
+        $limit = $this->license->limit($limitKey);
+
+        return [
+            'limit' => $limit,
+            'total' => $total,
+            'remaining' => $limit === null ? null : max(0, $limit - $total),
+        ];
     }
 
     public function charts(Request $request): JsonResponse
